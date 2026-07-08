@@ -4,12 +4,17 @@
 
 ## Unreleased
 
+### Removed
+
+Retired all first-generation summary tables.
+
 ### Changed
 
 -   Introduced `dashboard_data` as the future warehouse fact table.
 -   Added `dashboard_transform.py`.
 -   Began migrating the ETL away from `clean_data` and
     `listening_history_api`.
+-  Tableau will use dashboard_data as its primary data source.
 
 ------------------------------------------------------------------------
 
