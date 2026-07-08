@@ -2,18 +2,16 @@
 
 ## In Progress
 
--   Tableau dashboard development
--   Dashboard UI templates
--   Shared filtering strategy
--   Mobile "Now Playing" dashboard
+-   Complete migration to `dashboard_data`
+-   Rewrite analytics SQL
+-   Build streaming history importer
+-   Finish Tableau dashboard framework
 
 ## Next
 
--   Receive next Spotify Extended Streaming History export
--   Build dashboard_data fact table
--   Merge export history with API archive
--   Update analytics SQL to use dashboard_data
--   Replace Tableau summary-table workflow with unified fact table
+-   Switch analytics to `dashboard_data`
+-   Retire `clean_data`
+-   Retire `listening_history_api`
 
 ## Planned Enhancements
 
