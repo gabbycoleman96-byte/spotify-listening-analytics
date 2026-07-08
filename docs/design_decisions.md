@@ -43,3 +43,20 @@ Analytics tables are exported automatically as CSV files.
 
 Future work will consolidate these into a single Tableau-friendly fact
 table after the next Spotify Extended Streaming History export.
+
+
+## Dashboard Data Warehouse
+
+A new warehouse table named `dashboard_data` has been introduced.
+
+Design goals:
+
+-   One row per listening event.
+-   Single source of truth.
+-   Feed analytics tables.
+-   Feed Tableau.
+-   Support future enrichment.
+
+Transformation logic is now centralized in Python
+(`dashboard_transform.py`) so both API and export imports will share the
+same business rules.
