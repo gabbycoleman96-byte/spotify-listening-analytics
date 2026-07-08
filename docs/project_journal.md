@@ -31,6 +31,15 @@ scripts.
 
 Automated analytics rebuilds and CSV exports.
 
+## Milestone 8
+
+Started the warehouse refactor.
+
+-   Created the `dashboard_data` schema.
+-   Built `dashboard_transform.py`.
+-   Updated the ETL to prepare for direct loading into `dashboard_data`.
+-   Began retiring `clean_data` and `listening_history_api`.
+
 ## Current Status
 
 The ETL pipeline now performs end-to-end ingestion, loading, analytics
