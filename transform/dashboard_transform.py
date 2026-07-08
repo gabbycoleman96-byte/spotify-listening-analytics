@@ -195,7 +195,10 @@ def reorder_columns(df):
 # Main Transformation
 # ============================================================
 
-def build_dashboard_dataframe(df):
+def build_dashboard_dataframe(
+    df,
+    liked_song_ids
+):
     """
     Transform raw Spotify API data into the
     dashboard_data warehouse schema.
@@ -203,7 +206,10 @@ def build_dashboard_dataframe(df):
 
     df = add_date_dimensions(df)
 
-    df = add_default_columns(df)
+    df = add_default_columns(
+    df,
+    liked_song_ids
+)
 
     df = reorder_columns(df)
 
