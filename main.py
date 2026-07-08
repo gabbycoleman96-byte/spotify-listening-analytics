@@ -15,10 +15,11 @@ Pipeline
 3. Load liked songs into MySQL
 4. Download recent tracks
 5. Refresh recent_tracks_snapshot
-6. Archive recent plays into listening_history_api
-7. Rebuild analytics tables
-8. Export Tableau datasets
-9. Log the ETL run
+6. Transform recent plays into dashboard_data format
+7. Load dashboard_data
+8. Rebuild analytics tables
+9. Export Tableau datasets
+10. Log the ETL run
 """
 
 # ============================================================
@@ -31,11 +32,25 @@ from time import perf_counter
 from extract.liked_songs import download_liked_songs
 from extract.recent_tracks import download_recent_tracks
 
-from load.database import get_latest_liked_song_date
-from load.etl_logger import log_etl_run
-from load.loader import load_dataframe, execute_sql
+from load.database import (
+    get_latest_liked_song_date,
+    get_liked_song_ids
+)
 
-from transform.rebuild_analytics import rebuild_analytics_tables
+from load.etl_logger import log_etl_run
+from load.loader import (
+    load_dataframe,
+    execute_sql
+)
+
+from transform.dashboard_transform import (
+    build_dashboard_dataframe
+)
+
+from transform.rebuild_analytics import (
+    rebuild_analytics_tables
+)
+
 from export.export_csv import export_tables
 
 from config.pipeline import ANALYTICS_PIPELINE
@@ -48,16 +63,8 @@ from config.pipeline import ANALYTICS_PIPELINE
 def main():
     """Run the complete Spotify ETL pipeline."""
 
-    # --------------------------------------------------------
-    # Track runtime
-    # --------------------------------------------------------
-
     pipeline_start = perf_counter()
     pipeline_start_time = datetime.now()
-
-    # --------------------------------------------------------
-    # Default values for logging
-    # --------------------------------------------------------
 
     status = "Success"
     error_message = None
@@ -84,13 +91,18 @@ def main():
 
         if latest_liked_song is None:
 
-            print("No liked songs found in the database.")
-            print("Performing a full download...\n")
+            print("No liked songs found.")
+            print("Performing full download...\n")
 
         else:
 
-            print(f"Latest song in database: {latest_liked_song}")
-            print("Performing an incremental download...\n")
+            print(
+                f"Latest liked song: {latest_liked_song}"
+            )
+
+            print(
+                "Performing incremental download...\n"
+            )
 
         liked_df = download_liked_songs(
             stop_at=latest_liked_song
@@ -100,18 +112,19 @@ def main():
 
         if liked_downloaded > 0:
 
-            print("Loading liked songs into MySQL...")
-
             liked_inserted = load_dataframe(
+
                 liked_df,
+
                 "liked_songs",
+
                 ignore_duplicates=True
+
             )
 
         else:
 
-            print("No new liked songs found.")
-            print("Skipping database load.")
+            print("No new liked songs.")
 
         # ====================================================
         # Recent Tracks Snapshot
@@ -123,67 +136,65 @@ def main():
 
         recent_downloaded = len(recent_df)
 
-        print("Refreshing recent_tracks_snapshot...")
+        print("Refreshing snapshot...")
 
         execute_sql("""
+
             TRUNCATE TABLE recent_tracks_snapshot;
+
         """)
 
-        recent_inserted = load_dataframe(
+        load_dataframe(
+
             recent_df,
-            "recent_tracks_snapshot",
-            ignore_duplicates=False
+
+            "recent_tracks_snapshot"
+
         )
 
         # ====================================================
-        # Archive Listening History
+        # Dashboard Warehouse
         # ====================================================
 
-        print("\nArchiving recent plays...")
+        print("\nBuilding dashboard dataset...")
 
-        execute_sql("""
-            INSERT IGNORE INTO listening_history_api (
+        liked_song_ids = get_liked_song_ids()
 
-                played_at,
-                spotify_id,
-                spotify_uri,
-                track_name,
-                artist_name,
-                album_name,
-                duration_ms
+        dashboard_df = build_dashboard_dataframe(
 
-            )
+            recent_df,
 
-            SELECT
+            liked_song_ids
 
-                played_at,
-                spotify_id,
-                spotify_uri,
-                track_name,
-                artist_name,
-                album_name,
-                duration_ms
+        )
 
-            FROM recent_tracks_snapshot;
-        """)
+        print("Loading dashboard_data...")
+
+        recent_inserted = load_dataframe(
+
+            dashboard_df,
+
+            "dashboard_data",
+
+            ignore_duplicates=True
+
+        )
 
         # ====================================================
-        # Rebuild Analytics Tables
+        # Analytics
         # ====================================================
 
         rebuild_analytics_tables()
 
         # ====================================================
-        # Export Tableau Data
+        # Tableau Exports
         # ====================================================
 
         export_tables(
-            [table for _, table in ANALYTICS_PIPELINE]
-        )
 
-        # ====================================================
-        # Pipeline Summary
-        # ====================================================
+            [table for _, table in ANALYTICS_PIPELINE]
+
+        )
 
         runtime = perf_counter() - pipeline_start
 
@@ -195,12 +206,12 @@ def main():
         print("\nLiked Songs")
         print("-" * 20)
         print(f"Downloaded : {liked_downloaded:,}")
-        print(f"Inserted   : {liked_inserted:,}")
+        print(f"Inserted : {liked_inserted:,}")
 
-        print("\nRecent Tracks")
+        print("\nRecent Plays")
         print("-" * 20)
         print(f"Downloaded : {recent_downloaded:,}")
-        print(f"Inserted   : {recent_inserted:,}")
+        print(f"Inserted : {recent_inserted:,}")
 
         print("\nRuntime")
         print("-" * 20)
@@ -213,7 +224,7 @@ def main():
         status = "Failed"
         error_message = str(e)
 
-        print("\nPipeline failed!")
+        print("\nPipeline failed.")
         print(error_message)
 
         raise
@@ -221,19 +232,31 @@ def main():
     finally:
 
         runtime = perf_counter() - pipeline_start
+
         pipeline_end_time = datetime.now()
 
         log_etl_run(
+
             pipeline_name="Spotify ETL",
+
             start_time=pipeline_start_time,
+
             end_time=pipeline_end_time,
+
             runtime_seconds=runtime,
+
             status=status,
+
             liked_downloaded=liked_downloaded,
+
             liked_inserted=liked_inserted,
+
             recent_downloaded=recent_downloaded,
+
             recent_inserted=recent_inserted,
+
             error_message=error_message
+
         )
 
 
@@ -242,4 +265,5 @@ def main():
 # ============================================================
 
 if __name__ == "__main__":
+
     main()
