@@ -160,6 +160,46 @@ def get_latest_liked_song_date():
     return latest_date
 
 
+def get_liked_song_ids():
+    """
+    Retrieve all liked Spotify track IDs.
+
+    Returns
+    -------
+    set[str]
+        Set containing every liked spotify_id.
+    """
+
+    connection = None
+    cursor = None
+
+    try:
+
+        connection = create_connection()
+        cursor = connection.cursor()
+
+        cursor.execute("""
+            SELECT spotify_id
+            FROM liked_songs
+        """)
+
+        return {
+
+            row[0]
+
+            for row in cursor.fetchall()
+
+        }
+
+    finally:
+
+        if cursor:
+            cursor.close()
+
+        if connection and connection.is_connected():
+            connection.close()
+
+
 # ============================================================
 # Test the connection
 # ============================================================
