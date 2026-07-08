@@ -68,3 +68,24 @@ spotify_etl/
 5.  Rebuild analytics tables.
 6.  Export Tableau CSV datasets.
 7.  Log the ETL execution.
+
+
+## Warehouse Refactor (In Progress)
+
+The project has begun transitioning from a dual-history architecture to
+a single warehouse architecture centered on `dashboard_data`.
+
+Current transition:
+
+``` text
+Spotify API
+      │
+      ▼
+recent_tracks_snapshot
+      │
+      ├── dashboard_data (new warehouse)
+      └── recent_tracks_snapshot (debug/snapshot)
+```
+
+Future Spotify Extended Streaming History exports will also load
+directly into `dashboard_data`, making it the single source of truth.
