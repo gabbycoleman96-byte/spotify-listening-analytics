@@ -1,17 +1,8 @@
 # roadmap.md
 
-## In Progress
+Completed: - Retired legacy summary tables.
 
--   Complete migration to `dashboard_data`
--   Rewrite analytics SQL
--   Build streaming history importer
--   Finish Tableau dashboard framework
-
-## Next
-
--   Switch analytics to `dashboard_data`
--   Retire `clean_data`
--   Retire `listening_history_api`
+Next: - Design advanced analytical SQL tables only where SQL adds value.
 
 ## Planned Enhancements
 
