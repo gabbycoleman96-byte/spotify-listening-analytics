@@ -76,3 +76,14 @@ Analytics specific to liked songs.
 
 Stores pipeline execution history including runtime, row counts, status,
 and errors.
+
+------------------------------------------------------------------------
+
+## dashboard_data (In Development)
+
+Primary warehouse fact table.
+
+Purpose: - Store one row per listening event. - Become the single source
+of truth. - Feed analytics tables and Tableau.
+
+Status: Schema created. ETL integration in progress.
