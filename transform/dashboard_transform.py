@@ -77,7 +77,10 @@ def add_date_dimensions(df):
 # Warehouse Defaults
 # ============================================================
 
-def add_default_columns(df):
+def add_default_columns(
+    df,
+    liked_song_ids
+):
     """
     Add columns that are not currently supplied
     by the Spotify API.
@@ -85,16 +88,16 @@ def add_default_columns(df):
 
     df = df.copy()
 
-    # API does not tell us how long the user listened.
-    # We assume a full listen until a future export
-    # provides the exact value.
+    # Spotify API does not provide actual playback duration.
     df["ms_played"] = df["duration_ms"]
 
     df["shuffle_state"] = None
 
     df["skipped"] = None
 
-    df["is_liked"] = False
+    df["is_liked"] = df["spotify_id"].isin(
+        liked_song_ids
+    )
 
     df["primary_genre"] = None
 
@@ -109,6 +112,7 @@ def add_default_columns(df):
     df["imported_at"] = datetime.now()
 
     return df
+
 
 
 # ============================================================
