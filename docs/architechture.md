@@ -89,3 +89,16 @@ recent_tracks_snapshot
 
 Future Spotify Extended Streaming History exports will also load
 directly into `dashboard_data`, making it the single source of truth.
+
+
+## Analytics Simplification
+
+The project has retired the first-generation summary tables.
+
+Current target architecture:
+
+Spotify API / Spotify Export ↓ dashboard_data ↓ dashboard_data.csv ↓
+Tableau
+
+Specialized SQL tables will only be created when Tableau cannot
+efficiently calculate the analysis.
