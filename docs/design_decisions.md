@@ -60,3 +60,12 @@ Design goals:
 Transformation logic is now centralized in Python
 (`dashboard_transform.py`) so both API and export imports will share the
 same business rules.
+
+
+## Summary Table Retirement
+
+Removed: - yearly_summary - hourly_summary - artist_lifetime_summary -
+artist_yearly_summary - track_summary - liked_song_analysis
+
+Decision: A single fact table supports global filtering, reduces ETL
+complexity, and better matches modern BI architecture.
