@@ -4,16 +4,12 @@
 
 ## Unreleased
 
-### Planned
+### Changed
 
--   Build unified `dashboard_data` fact table.
--   Merge future Spotify Extended Streaming History exports with API
-    archive.
--   Transition Tableau dashboards to use a single fact table.
--   Add genre enrichment.
--   Add album artwork and dominant color extraction.
--   Add dynamic dashboard theming.
--   Automate Tableau publishing workflow.
+-   Introduced `dashboard_data` as the future warehouse fact table.
+-   Added `dashboard_transform.py`.
+-   Began migrating the ETL away from `clean_data` and
+    `listening_history_api`.
 
 ------------------------------------------------------------------------
 
