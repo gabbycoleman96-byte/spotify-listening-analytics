@@ -40,6 +40,13 @@ Started the warehouse refactor.
 -   Updated the ETL to prepare for direct loading into `dashboard_data`.
 -   Began retiring `clean_data` and `listening_history_api`.
 
+## Milestone 9
+
+Retired the legacy analytics layer.
+
+The project now centers on dashboard_data as the future warehouse and
+Tableau fact table.
+
 ## Current Status
 
 The ETL pipeline now performs end-to-end ingestion, loading, analytics
