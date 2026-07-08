@@ -87,3 +87,12 @@ Purpose: - Store one row per listening event. - Become the single source
 of truth. - Feed analytics tables and Tableau.
 
 Status: Schema created. ETL integration in progress.
+
+------------------------------------------------------------------------
+
+## Retired Tables
+
+yearly_summary hourly_summary artist_lifetime_summary
+artist_yearly_summary track_summary liked_song_analysis
+
+These have been replaced by a unified fact-table strategy.
