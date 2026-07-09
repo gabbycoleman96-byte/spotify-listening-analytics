@@ -54,6 +54,7 @@ from transform.rebuild_analytics import (
 from export.export_csv import export_tables
 
 from config.pipeline import ANALYTICS_PIPELINE
+from config.pipeline import EXPORT_TABLES
 
 
 # ============================================================
@@ -190,11 +191,7 @@ def main():
         # Tableau Exports
         # ====================================================
 
-        export_tables(
-
-            [table for _, table in ANALYTICS_PIPELINE]
-
-        )
+        export_tables(EXPORT_TABLES)
 
         runtime = perf_counter() - pipeline_start
 
