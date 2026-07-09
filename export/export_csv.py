@@ -51,7 +51,8 @@ def export_table(table_name):
 
         df.to_csv(
             output_path,
-            index=False
+            index=False,
+            encoding="utf-8-sig"
         )
 
         print(
