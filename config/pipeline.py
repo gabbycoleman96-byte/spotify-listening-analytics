@@ -6,28 +6,49 @@ Author:
 
 Purpose
 -------
-Defines the analytics pipeline.
+Defines the SQL analytics pipeline and Tableau export pipeline.
 
-Each tuple contains:
-
-    (SQL script, output table)
-
-This keeps SQL execution order and Tableau exports
-in one central location.
+Keeping these lists in one location allows the ETL to remain
+modular. When a new analytics table is added, only this file
+needs to be updated.
 """
+
+# ============================================================
+# Analytics SQL Execution Order
+# ============================================================
 
 ANALYTICS_PIPELINE = [
 
-    ("01_yearly_summary.sql", "yearly_summary"),
+    ("01_artist_discovery.sql", "artist_discovery"),
 
-    ("02_hourly_summary.sql", "hourly_summary"),
+    ("02_artist_loyalty.sql", "artist_loyalty"),
 
-    ("03_artist_lifetime_summary.sql", "artist_lifetime_summary"),
+    ("03_forgotten_favorites.sql", "forgotten_favorites"),
 
-    ("04_artist_yearly_summary.sql", "artist_yearly_summary"),
+    ("04_listening_session_summary.sql", "listening_session_summary"),
 
-    ("05_track_summary.sql", "track_summary"),
+    ("05_repeat_behavior.sql", "repeat_behavior"),
 
-    ("06_liked_song_analysis.sql", "liked_song_analysis"),
+]
+
+# ============================================================
+# Tableau Export Order
+# ============================================================
+
+EXPORT_TABLES = [
+
+    "dashboard_data",
+
+    "artist_discovery",
+
+    "artist_loyalty",
+
+    "forgotten_favorites",
+
+    "listening_session_summary",
+
+    "repeat_behavior",
+
+    "liked_songs"
 
 ]
