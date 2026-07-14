@@ -1,6 +1,6 @@
 /*
 ===============================================================
-Dashboard Data
+Spotify Listening Warehouse
 ===============================================================
 
 Author:
@@ -27,9 +27,9 @@ Data Sources
 
 USE spotify_analysis;
 
-DROP TABLE IF EXISTS dashboard_data;
+DROP TABLE IF EXISTS spotify_listening_warehouse;
 
-CREATE TABLE dashboard_data (
+CREATE TABLE spotify_listening_warehouse (
 
     /* =======================================================
        Listening Event
