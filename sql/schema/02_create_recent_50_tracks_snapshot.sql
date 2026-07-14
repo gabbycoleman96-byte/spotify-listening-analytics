@@ -1,14 +1,14 @@
 /*
 ===============================================================
-Recent Tracks Table
+Recent 50 Tracks Table
 ===============================================================
 */
 
 USE spotify_analysis;
 
-DROP TABLE IF EXISTS recent_tracks_snapshot;
+DROP TABLE IF EXISTS recent_50_tracks_snapshot;
 
-CREATE TABLE recent_tracks_snapshot (
+CREATE TABLE recent_50_tracks_snapshot (
 
     played_at DATETIME NOT NULL,
 
