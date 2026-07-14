@@ -14,9 +14,9 @@ Pipeline
 2. Download new liked songs
 3. Load liked songs into MySQL
 4. Download recent tracks
-5. Refresh recent_tracks_snapshot
-6. Transform recent plays into dashboard_data format
-7. Load dashboard_data
+5. Refresh recent_50_tracks_snapshot
+6. Transform recent plays into spotify_listening_warehouse format
+7. Load spotify_listening_warehouse
 8. Rebuild analytics tables
 9. Export Tableau datasets
 10. Log the ETL run
@@ -141,7 +141,7 @@ def main():
 
         execute_sql("""
 
-            TRUNCATE TABLE recent_tracks_snapshot;
+            TRUNCATE TABLE recent_50_tracks_snapshot;
 
         """)
 
@@ -149,7 +149,7 @@ def main():
 
             recent_df,
 
-            "recent_tracks_snapshot"
+            "recent_50_tracks_snapshot"
 
         )
 
@@ -169,13 +169,13 @@ def main():
 
         )
 
-        print("Loading dashboard_data...")
+        print("Loading spotify_listening_warehouse...")
 
         recent_inserted = load_dataframe(
 
             dashboard_df,
 
-            "dashboard_data",
+            "spotify_listening_warehouse",
 
             ignore_duplicates=True
 
