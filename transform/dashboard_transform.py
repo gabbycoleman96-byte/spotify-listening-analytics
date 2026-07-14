@@ -40,7 +40,10 @@ def add_date_dimensions(df):
 
     df = df.copy()
 
-    df["played_at"] = pd.to_datetime(df["played_at"])
+        df["played_at"] = pd.to_datetime(
+        df["played_at"],
+        format="mixed"
+    )
 
     df["date"] = df["played_at"].dt.date
 
