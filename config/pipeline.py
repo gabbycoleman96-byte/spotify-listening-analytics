@@ -37,7 +37,7 @@ ANALYTICS_PIPELINE = [
 
 EXPORT_TABLES = [
 
-    "dashboard_data",
+    "spotify_listening_warehouse",
 
     "artist_discovery",
 
