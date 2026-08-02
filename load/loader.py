@@ -9,44 +9,50 @@ Purpose
 Contains reusable functions for loading Pandas DataFrames into MySQL tables
 and executing SQL statements.
 
-This module provides the primary interface for writing data to MySQL
-throughout the Spotify ETL project.
+All database writes use the project's shared SQLAlchemy engine.
 """
 
 # ============================================================
 # Imports
 # ============================================================
 
-import pandas as pd
-from mysql.connector import Error
-
-from load.database import create_connection
 from pathlib import Path
+
+import pandas as pd
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+from tqdm import tqdm
+
+from config.warehouse_schema import SOURCE_COLUMNS
+from load.database import engine
 
 
 # ============================================================
 # Helper Functions
 # ============================================================
 
-def build_insert_query(table_name, columns, ignore_duplicates=False):
+def build_insert_query(
+    table_name,
+    columns,
+    ignore_duplicates=False
+):
     """
     Build a parameterized INSERT statement.
 
     Parameters
     ----------
     table_name : str
-        Destination MySQL table.
+        Destination table.
 
     columns : iterable
-        Column names from the DataFrame.
+        DataFrame column names.
 
     ignore_duplicates : bool
-        If True, use INSERT IGNORE.
+        If True, uses INSERT IGNORE.
 
     Returns
     -------
-    str
-        SQL INSERT statement.
+    sqlalchemy.sql.elements.TextClause
     """
 
     insert_type = (
@@ -55,91 +61,74 @@ def build_insert_query(table_name, columns, ignore_duplicates=False):
         else "INSERT"
     )
 
-    placeholders = ", ".join(["%s"] * len(columns))
+    placeholders = ", ".join(
+        f":{column}"
+        for column in columns
+    )
+
     column_string = ", ".join(columns)
 
-    return f"""
-    {insert_type} INTO {table_name}
-    ({column_string})
-    VALUES ({placeholders})
+    return text(f"""
+        {insert_type} INTO {table_name}
+        ({column_string})
+        VALUES ({placeholders})
+    """)
+
+
+def dataframe_to_records(df):
+    """
+    Convert a DataFrame into dictionaries suitable for SQLAlchemy.
+
+    NaN values become None so MySQL stores NULL.
     """
 
+    clean_df = (
+        df.astype(object)
+        .where(pd.notna(df), None)
+    )
 
-def dataframe_to_tuples(df):
-    """
-    Convert a DataFrame into tuples that MySQL understands.
-
-    Any Pandas NaN values become Python None values so MySQL stores
-    them as NULL.
-    """
-
-    clean_df = df.astype(object).where(pd.notna(df), None)
-
-    return [tuple(row) for row in clean_df.to_numpy()]
+    return clean_df.to_dict(
+        orient="records"
+    )
 
 
 # ============================================================
 # SQL Execution
 # ============================================================
 
-def execute_sql(query):
+def execute_sql(query, params=None):
     """
     Execute a SQL statement.
-
-    Intended for SQL operations that do not involve loading a
-    Pandas DataFrame, such as:
-
-    - INSERT ... SELECT
-    - DELETE
-    - TRUNCATE
-    - UPDATE
-    - CREATE TABLE
 
     Parameters
     ----------
     query : str
-        SQL statement to execute.
+    params : dict | None
+        Parameters for the SQL statement.
 
     Returns
     -------
     int
-        Number of affected rows (when available).
+        Number of affected rows.
     """
-
-    connection = None
-    cursor = None
 
     try:
 
-        connection = create_connection()
-        cursor = connection.cursor()
+        with engine.begin() as connection:
 
-        cursor.execute(query)
+            result = connection.execute(
+                text(query),
+                params or {}
+            )
 
-        connection.commit()
 
-        print("SQL statement executed successfully.")
+        return result.rowcount
 
-        return cursor.rowcount
-
-    except Error as e:
-
-        if connection:
-            connection.rollback()
+    except SQLAlchemyError as e:
 
         print(f"\nDatabase Error:\n{e}")
 
-        return 0
-
-    finally:
-
-        if cursor:
-            cursor.close()
-
-        if connection and connection.is_connected():
-            connection.close()
-
-            print("Database connection closed.")
+        raise
 
 
 def execute_sql_file(file_path):
@@ -148,53 +137,41 @@ def execute_sql_file(file_path):
 
     Parameters
     ----------
-    file_path : str or Path
-        Path to the SQL script.
+    file_path : str | Path
     """
 
-    connection = None
-    cursor = None
+    sql = Path(file_path).read_text(
+        encoding="utf-8"
+    )
 
     try:
 
-        connection = create_connection()
-        cursor = connection.cursor()
+        with engine.begin() as connection:
 
-        sql = Path(file_path).read_text(
-            encoding="utf-8"
-        )
+            for statement in sql.split(";"):
 
-        for statement in sql.split(";"):
+                statement = statement.strip()
 
-            statement = statement.strip()
+                if not statement:
+                    continue
 
-            if statement:
+                result = connection.execute(
+                    text(statement)
+                )
 
-                cursor.execute(statement)
-
-        connection.commit()
+                if result.returns_rows:
+                    result.fetchall()
 
         print(
             f"Executed SQL file: {Path(file_path).name}"
         )
 
-    except Error as e:
-
-        if connection:
-            connection.rollback()
+    except SQLAlchemyError as e:
 
         print(f"\nDatabase Error:\n{e}")
 
         raise
-
-    finally:
-
-        if cursor:
-            cursor.close()
-
-        if connection and connection.is_connected():
-            connection.close()
-
+    
 # ============================================================
 # Main DataFrame Loader
 # ============================================================
@@ -203,7 +180,7 @@ def load_dataframe(
     df,
     table_name,
     ignore_duplicates=False,
-    batch_size=1000
+    batch_size=50000,
 ):
     """
     Load a DataFrame into a MySQL table.
@@ -214,54 +191,62 @@ def load_dataframe(
         Data to load.
 
     table_name : str
-        Destination MySQL table.
+        Destination table.
 
-    ignore_duplicates : bool, optional
-        Ignore duplicate primary keys.
+    ignore_duplicates : bool, default False
+        Use INSERT IGNORE.
 
-    batch_size : int, optional
+    batch_size : int, default 50000
         Number of rows per batch.
 
     Returns
     -------
     int
-        Total number of inserted rows.
+        Number of inserted rows.
     """
 
-    connection = None
-    cursor = None
+    if df.empty:
+
+        print(f"No rows to load into '{table_name}'.")
+
+        return 0
+
+    query = build_insert_query(
+        table_name=table_name,
+        columns=df.columns,
+        ignore_duplicates=ignore_duplicates,
+    )
+
+    data = dataframe_to_records(df)
+
+    rows_inserted = 0
 
     try:
 
-        connection = create_connection()
-        cursor = connection.cursor()
+        with engine.begin() as connection:
 
-        query = build_insert_query(
-            table_name,
-            df.columns,
-            ignore_duplicates
-        )
+            with tqdm(
+                total=len(data),
+                desc=f"Loading {table_name}",
+                unit="rows",
+                unit_scale=True,
+                dynamic_ncols=True,
+            ) as pbar:
 
-        data = dataframe_to_tuples(df)
+                for start in range(0, len(data), batch_size):
 
-        rows_inserted = 0
+                    batch = data[start:start + batch_size]
 
-        for start in range(0, len(data), batch_size):
+                    result = connection.execute(
+                        query,
+                        batch,
+                    )
 
-            batch = data[start:start + batch_size]
+                    if result.rowcount is not None:
 
-            cursor.executemany(query, batch)
+                        rows_inserted += result.rowcount
 
-            connection.commit()
-
-            rows_inserted += cursor.rowcount
-
-            print(
-                f"Processed rows "
-                f"{start + 1:,}"
-                f" - "
-                f"{min(start + batch_size, len(data)):,}"
-            )
+                    pbar.update(len(batch))
 
         print(
             f"\nSuccessfully inserted "
@@ -270,21 +255,29 @@ def load_dataframe(
 
         return rows_inserted
 
-    except Error as e:
-
-        if connection:
-            connection.rollback()
+    except SQLAlchemyError as e:
 
         print(f"\nDatabase Error:\n{e}")
 
-        return 0
+        raise
+    
+def fetch_dataframe(query):
+    """
+    Execute a SELECT statement and return the results
+    as a pandas DataFrame.
+    """
 
-    finally:
+    try:
 
-        if cursor:
-            cursor.close()
+        with engine.begin() as connection:
 
-        if connection and connection.is_connected():
-            connection.close()
+            return pd.read_sql(
+                text(query),
+                connection,
+            )
 
-            print("Database connection closed.")
+    except SQLAlchemyError as e:
+
+        print(f"\nDatabase Error:\n{e}")
+
+        raise

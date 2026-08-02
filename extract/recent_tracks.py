@@ -49,8 +49,6 @@ def download_recent_tracks():
         A DataFrame containing your recent listening history.
     """
 
-    print("Downloading recently played tracks...\n")
-
     results = sp.current_user_recently_played(limit=50)
 
     recent_tracks = []

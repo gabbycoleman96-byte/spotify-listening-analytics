@@ -6,25 +6,30 @@ Author:
 
 Purpose
 -------
-Creates and manages a reusable connection to the MySQL database.
+Creates and manages the project's SQLAlchemy engine.
 
-Why do we have this file?
--------------------------
-Instead of every Python script creating its own database connection,
-every script will simply import the create_connection() function.
-
-Example
--------
-from load.database import create_connection
-
-connection = create_connection()
+Why SQLAlchemy?
+---------------
+Instead of every module creating and closing its own MySQL connection,
+the entire project shares one SQLAlchemy Engine.
 
 Benefits
 --------
-✓ Only one place to update credentials
-✓ Easier debugging
+✓ One connection pool for the entire project
+✓ No more pandas SQL warnings
 ✓ Cleaner code
-✓ Follows the DRY (Don't Repeat Yourself) principle
+✓ Faster repeated database operations
+✓ Easier future migration to PostgreSQL or SQLite
+✓ Centralized database configuration
+
+Example
+-------
+from load.database import engine
+
+df = pd.read_sql(
+    "SELECT * FROM liked_songs",
+    engine
+)
 """
 
 # ============================================================
@@ -34,31 +39,15 @@ Benefits
 import os
 from pathlib import Path
 
-import mysql.connector
+import pandas as pd
 from dotenv import load_dotenv
-
+from sqlalchemy import create_engine, text
 
 # ============================================================
-# Locate the project root folder
+# Project Paths
 # ============================================================
-#
-# __file__ points to this file:
-#
-# spotify_etl/load/database.py
-#
-# .parent           = load/
-# .parent.parent    = spotify_etl/
-#
-# This allows us to ALWAYS find the project's root folder,
-# no matter which script is running.
-#
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-
-
-# ============================================================
-# Locate the .env file
-# ============================================================
 
 ENV_FILE = PROJECT_ROOT / ".env"
 
@@ -66,9 +55,8 @@ print(f"Loading environment file from:\n{ENV_FILE}\n")
 
 load_dotenv(dotenv_path=ENV_FILE)
 
-
 # ============================================================
-# Verify required environment variables exist
+# Validate Environment Variables
 # ============================================================
 
 REQUIRED_VARIABLES = [
@@ -87,10 +75,9 @@ REQUIRED_VARIABLES = [
 
 for variable in REQUIRED_VARIABLES:
 
-    if os.getenv(variable) is None:
+    if not os.getenv(variable):
 
         raise ValueError(
-
             f"""
 Environment variable '{variable}' was not found.
 
@@ -102,118 +89,95 @@ Expected location:
 """
         )
 
+# ============================================================
+# Database Configuration
+# ============================================================
+
+MYSQL_HOST = os.getenv("MYSQL_HOST")
+MYSQL_PORT = os.getenv("MYSQL_PORT")
+MYSQL_DATABASE = os.getenv("MYSQL_DATABASE")
+MYSQL_USER = os.getenv("MYSQL_USER")
+MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD")
+
+DATABASE_URL = (
+    f"mysql+mysqlconnector://"
+    f"{MYSQL_USER}:{MYSQL_PASSWORD}"
+    f"@{MYSQL_HOST}:{MYSQL_PORT}"
+    f"/{MYSQL_DATABASE}"
+)
 
 # ============================================================
-# Create MySQL Connection
+# Shared SQLAlchemy Engine
 # ============================================================
 
-def create_connection():
-    """
-    Creates a connection to the MySQL database.
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=3600,
+    future=True,
+)
 
-    Returns
-    -------
-    mysql.connector.connection.MySQLConnection
-    """
-
-    connection = mysql.connector.connect(
-
-        host=os.getenv("MYSQL_HOST"),
-
-        port=int(os.getenv("MYSQL_PORT")),
-
-        database=os.getenv("MYSQL_DATABASE"),
-
-        user=os.getenv("MYSQL_USER"),
-
-        password=os.getenv("MYSQL_PASSWORD")
-
-    )
-
-    return connection
-
+# ============================================================
+# Helper Functions
+# ============================================================
 
 def get_latest_liked_song_date():
     """
-    Return the newest added_to_library timestamp currently stored
-    in the liked_songs table.
-
-    Returns
-    -------
-    datetime.datetime | None
-        Latest timestamp, or None if the table is empty.
+    Return the newest liked song timestamp.
     """
 
-    connection = create_connection()
-    cursor = connection.cursor()
-
-    cursor.execute("""
+    query = text("""
         SELECT MAX(added_to_library)
         FROM liked_songs
     """)
 
-    latest_date = cursor.fetchone()[0]
+    with engine.connect() as connection:
 
-    cursor.close()
-    connection.close()
-
-    return latest_date
+        return connection.execute(query).scalar()
 
 
 def get_liked_song_ids():
     """
-    Retrieve all liked Spotify track IDs.
+    Return every liked Spotify track ID.
 
     Returns
     -------
     set[str]
-        Set containing every liked spotify_id.
     """
 
-    connection = None
-    cursor = None
+    query = text("""
+        SELECT spotify_id
+        FROM liked_songs
+    """)
 
-    try:
+    with engine.connect() as connection:
 
-        connection = create_connection()
-        cursor = connection.cursor()
-
-        cursor.execute("""
-            SELECT spotify_id
-            FROM liked_songs
-        """)
+        rows = connection.execute(query)
 
         return {
 
-            row[0]
+            row.spotify_id
 
-            for row in cursor.fetchall()
+            for row in rows
+
+            if row.spotify_id
 
         }
 
-    finally:
-
-        if cursor:
-            cursor.close()
-
-        if connection and connection.is_connected():
-            connection.close()
-
 
 # ============================================================
-# Test the connection
+# Test Connection
 # ============================================================
 
 if __name__ == "__main__":
 
-    print("Connecting to MySQL...\n")
+    print("Testing database connection...\n")
 
-    connection = create_connection()
+    with engine.connect() as connection:
+
+        database_name = connection.execute(
+            text("SELECT DATABASE();")
+        ).scalar()
 
     print("✅ Connected Successfully!")
-
-    print(f"Database: {connection.database}")
-
-    connection.close()
-
-    print("Connection closed.")
+    print(f"Database: {database_name}")

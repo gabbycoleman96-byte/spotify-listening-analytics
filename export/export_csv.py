@@ -6,7 +6,7 @@ Author:
 
 Purpose
 -------
-Exports MySQL tables to CSV files for Tableau.
+Exports database tables to CSV files for Tableau.
 
 These CSVs serve as the final output of the ETL pipeline and are used
 as Tableau Public data sources.
@@ -19,9 +19,9 @@ as Tableau Public data sources.
 from pathlib import Path
 
 import pandas as pd
+from sqlalchemy import text
 
-from load.database import create_connection
-
+from load.database import engine
 from config.settings import EXPORT_FOLDER
 
 
@@ -31,38 +31,33 @@ from config.settings import EXPORT_FOLDER
 
 def export_table(table_name):
     """
-    Export a MySQL table to a CSV file.
+    Export a database table to a CSV file.
 
     Parameters
     ----------
     table_name : str
-        Name of the MySQL table to export.
+        Name of the table to export.
     """
 
-    connection = create_connection()
+    query = text(f"""
+        SELECT *
+        FROM {table_name}
+    """)
 
-    try:
+    df = pd.read_sql(query, engine)
 
-        query = f"SELECT * FROM {table_name}"
+    output_path = Path(EXPORT_FOLDER) / f"{table_name}.csv"
 
-        df = pd.read_sql(query, connection)
+    df.to_csv(
+        output_path,
+        index=False,
+        encoding="utf-8-sig",
+    )
 
-        output_path = Path(EXPORT_FOLDER) / f"{table_name}.csv"
-
-        df.to_csv(
-            output_path,
-            index=False,
-            encoding="utf-8-sig"
-        )
-
-        print(
-            f"Exported {table_name} "
-            f"({len(df):,} rows)"
-        )
-
-    finally:
-
-        connection.close()
+    print(
+        f"Exported {table_name} "
+        f"({len(df):,} rows)"
+    )
 
 
 # ============================================================
@@ -71,14 +66,12 @@ def export_table(table_name):
 
 def export_tables(table_names):
     """
-    Export multiple MySQL tables.
+    Export multiple database tables.
 
     Parameters
     ----------
     table_names : list[str]
     """
-
-    print("\nExporting Tableau datasets...\n")
 
     for table in table_names:
 

@@ -1,134 +1,161 @@
-# CHANGELOG
+# Changelog
 
-------------------------------------------------------------------------
+All notable changes to this project are documented in this file.
 
-## Unreleased
+This project follows Semantic Versioning.
 
-### Removed
+---
 
-Retired all first-generation summary tables.
+# [1.0.0] - Initial Release
 
-### Changed
+## Overview
 
--   Introduced `dashboard_data` as the future warehouse fact table.
--   Added `dashboard_transform.py`.
--   Began migrating the ETL away from `clean_data` and
-    `listening_history_api`.
--  Tableau will use dashboard_data as its primary data source.
+Version 1.0.0 represents the completion of the project's data engineering phase.
 
-------------------------------------------------------------------------
+The project evolved from a manually maintained SQL dashboard into a fully automated analytics platform built around a centralized data warehouse.
 
-## v0.9.0 --- Automated Analytics Pipeline
+---
 
-### Added
+## Added
 
--   Automatic analytics table rebuilds.
--   Automatic CSV exports for Tableau.
--   Central pipeline configuration (`config/pipeline.py`).
--   SQL file execution from Python.
--   Reusable export module.
+### Data Collection
 
-### Changed
+- Spotify Web API integration
+- Historical Streaming History importer
+- Incremental liked song downloads
+- Incremental recently played downloads
 
--   ETL now rebuilds analytics and exports datasets during every run.
+---
 
-------------------------------------------------------------------------
+### ETL Pipeline
 
-## v0.8.0 --- Listening History Archive
+- Automated Python ETL pipeline
+- Warehouse loader
+- Data transformation layer
+- Duplicate protection
+- Execution logging
 
-### Added
+---
 
--   `recent_tracks_snapshot` table.
--   `listening_history_api` permanent archive.
--   Snapshot → archive workflow using `INSERT IGNORE`.
+### Database
 
-### Changed
+- MySQL warehouse
+- Analytics tables
+- Snapshot staging table
+- ETL logging table
 
--   Recent plays are no longer stored directly in a single table.
--   Listening history gaps are prevented while waiting for future
-    Spotify exports.
+---
 
-------------------------------------------------------------------------
+### Analytics
 
-## v0.7.0 --- Analytics SQL Refactor
+Added automated SQL generation for:
 
-### Added
+- Artist Discovery
+- Artist Loyalty
+- Forgotten Favorites
+- Listening Session Summary
+- Repeat Behavior
 
--   Modern SQL analytics scripts using:
-    -   `DROP TABLE IF EXISTS`
-    -   `CREATE TABLE ... AS SELECT`
+---
 
-### Refactored
+### Export
 
--   `yearly_summary`
--   `hourly_summary`
--   `artist_lifetime_summary`
--   `artist_yearly_summary`
--   `track_summary`
--   `liked_song_analysis`
+- Automated Tableau CSV exports
 
-------------------------------------------------------------------------
+---
 
-## v0.6.0 --- Incremental API Extraction
+### Documentation
 
-### Added
+Added
 
--   Incremental liked-song downloads.
--   Duplicate-safe loading using `INSERT IGNORE`.
+- README
+- Architecture documentation
+- Design Decisions
+- Data Dictionary
+- Project Journal
+- Roadmap
+- Changelog
 
-### Changed
+---
 
--   Liked songs are no longer downloaded in full on every ETL run.
+## Changed
 
-------------------------------------------------------------------------
+### Architecture
 
-## v0.5.0 --- Automated ETL
+Migrated from manually maintained summary tables to a warehouse-first architecture.
 
-### Added
+---
 
--   Windows Task Scheduler automation.
--   ETL logging.
--   Runtime summaries.
--   Modular loading functions.
+Renamed
 
-------------------------------------------------------------------------
+```text
+dashboard_data
+```
 
-## v0.4.0 --- Python ETL
+↓
 
-### Added
+```text
+spotify_listening_warehouse
+```
 
--   Spotify API integration.
--   Modular extraction modules.
--   MySQL loading modules.
--   Reusable helper utilities.
+---
 
-------------------------------------------------------------------------
+Renamed
 
-## v0.3.0 --- Analytics Warehouse
+```text
+recent_tracks_snapshot
+```
 
-### Added
+↓
 
--   Initial analytics tables.
--   SQL transformations.
--   Artist and track summaries.
+```text
+recent_50_tracks_snapshot
+```
 
-------------------------------------------------------------------------
+---
 
-## v0.2.0 --- Initial Database
+Removed the intermediate
 
-### Added
+```text
+listening_history_api
+```
 
--   MySQL database.
--   Import of Spotify Extended Streaming History.
--   Initial data cleaning workflow.
+table.
 
-------------------------------------------------------------------------
+---
 
-## v0.1.0 --- Project Started
+Reorganized repository structure.
 
-### Added
+---
 
--   Repository created.
--   Initial project architecture.
--   Documentation.
--   Planning and design.
+Converted project paths to relative paths for portability.
+
+---
+
+## Fixed
+
+Resolved duplicate warehouse imports.
+
+Standardized timestamp parsing across historical exports and live Spotify API data.
+
+Improved incremental loading.
+
+Simplified ETL execution.
+
+Improved naming consistency throughout the project.
+
+---
+
+## Removed
+
+Retired legacy summary tables.
+
+Removed obsolete migration scripts.
+
+Eliminated duplicate ETL logic.
+
+---
+
+# Future
+
+See `roadmap.md` for planned enhancements.

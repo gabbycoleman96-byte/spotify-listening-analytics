@@ -27,9 +27,9 @@ Data Sources
 
 USE spotify_analysis;
 
-DROP TABLE IF EXISTS spotify_listening_warehouse;
+DROP TABLE IF EXISTS listening_history_warehouse;
 
-CREATE TABLE spotify_listening_warehouse (
+CREATE TABLE listening_history_warehouse (
 
     /* =======================================================
        Listening Event
@@ -119,3 +119,65 @@ CREATE TABLE spotify_listening_warehouse (
     )
 
 );
+
+
+ALTER TABLE listening_history_warehouse
+ADD COLUMN session_id INT NULL,
+ADD COLUMN session_start DATETIME NULL,
+ADD COLUMN session_end DATETIME NULL,
+ADD COLUMN session_duration_minutes DECIMAL(8,2) NULL,
+ADD COLUMN session_stream_count SMALLINT NULL,
+ADD COLUMN minutes_since_previous_play INT NULL,
+
+ADD COLUMN play_number INT NULL,
+
+ADD COLUMN play_of_day SMALLINT NULL,
+ADD COLUMN play_of_week SMALLINT NULL,
+ADD COLUMN play_of_month SMALLINT NULL,
+ADD COLUMN play_of_year SMALLINT NULL,
+
+ADD COLUMN previous_track VARCHAR(255) NULL,
+ADD COLUMN previous_artist VARCHAR(255) NULL,
+ADD COLUMN previous_album VARCHAR(255) NULL,
+
+ADD COLUMN next_track VARCHAR(255) NULL,
+ADD COLUMN next_artist VARCHAR(255) NULL,
+ADD COLUMN next_album VARCHAR(255) NULL,
+
+ADD COLUMN same_artist_as_previous BOOLEAN NULL,
+ADD COLUMN same_album_as_previous BOOLEAN NULL,
+ADD COLUMN same_song_as_previous BOOLEAN NULL,
+
+ADD COLUMN artist_streak_id INT NULL,
+ADD COLUMN artist_streak_length SMALLINT NULL,
+
+ADD COLUMN album_streak_id INT NULL,
+ADD COLUMN album_streak_length SMALLINT NULL,
+
+ADD COLUMN song_streak_id INT NULL,
+ADD COLUMN song_streak_length SMALLINT NULL,
+
+ADD COLUMN skip_streak_id INT NULL,
+ADD COLUMN skip_streak_length SMALLINT NULL,
+
+ALTER TABLE listening_history_warehouse
+MODIFY play_of_year INT UNSIGNED,
+MODIFY play_number INT UNSIGNED,
+MODIFY session_id INT UNSIGNED,
+MODIFY artist_streak_id INT UNSIGNED,
+MODIFY album_streak_id INT UNSIGNED,
+MODIFY song_streak_id INT UNSIGNED,
+MODIFY skip_streak_id INT UNSIGNED,
+MODIFY minutes_since_previous_play INT;
+
+
+ALTER TABLE listening_history_warehouse
+
+ADD COLUMN play_in_session SMALLINT NULL,
+
+ADD COLUMN is_first_play BOOLEAN NULL,
+ADD COLUMN is_last_play BOOLEAN NULL,
+
+ADD COLUMN artist_play_count INT UNSIGNED NULL,
+ADD COLUMN album_play_count INT UNSIGNED NULL,
+ADD COLUMN track_play_count INT UNSIGNED NULL;

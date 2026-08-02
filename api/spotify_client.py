@@ -68,6 +68,8 @@ sp = spotipy.Spotify(
             "user-read-recently-played "
             "user-read-currently-playing"
         )
-    )
+    ),
+
+    retries=0,
 )
 user = sp.current_user()

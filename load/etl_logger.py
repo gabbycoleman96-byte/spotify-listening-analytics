@@ -1,11 +1,27 @@
 """
 etl_logger.py
 
+Author:
+    Gabby Coleman
+
+Purpose
+-------
 Utility functions for recording ETL pipeline runs.
 """
 
-from load.database import create_connection
+# ============================================================
+# Imports
+# ============================================================
 
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+
+from load.database import engine
+
+
+# ============================================================
+# ETL Logging
+# ============================================================
 
 def log_etl_run(
     pipeline_name,
@@ -17,17 +33,13 @@ def log_etl_run(
     liked_inserted,
     recent_downloaded,
     recent_inserted,
-    error_message=None
+    error_message=None,
 ):
     """
     Record one ETL pipeline execution.
     """
 
-    connection = create_connection()
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
+    query = text("""
         INSERT INTO etl_log
         (
             pipeline_name,
@@ -41,25 +53,44 @@ def log_etl_run(
             recent_inserted,
             error_message
         )
-
         VALUES
-        (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        """,
         (
-            pipeline_name,
-            start_time,
-            end_time,
-            runtime_seconds,
-            status,
-            liked_downloaded,
-            liked_inserted,
-            recent_downloaded,
-            recent_inserted,
-            error_message
+            :pipeline_name,
+            :start_time,
+            :end_time,
+            :runtime_seconds,
+            :status,
+            :liked_downloaded,
+            :liked_inserted,
+            :recent_downloaded,
+            :recent_inserted,
+            :error_message
         )
-    )
+    """)
 
-    connection.commit()
+    try:
 
-    cursor.close()
-    connection.close()
+        with engine.begin() as connection:
+
+            connection.execute(
+                query,
+                {
+                    "pipeline_name": pipeline_name,
+                    "start_time": start_time,
+                    "end_time": end_time,
+                    "runtime_seconds": runtime_seconds,
+                    "status": status,
+                    "liked_downloaded": liked_downloaded,
+                    "liked_inserted": liked_inserted,
+                    "recent_downloaded": recent_downloaded,
+                    "recent_inserted": recent_inserted,
+                    "error_message": error_message,
+                },
+            )
+
+    except SQLAlchemyError as e:
+
+        print(f"\nWarning: Unable to write ETL log.\n{e}")
+
+        # Never let logging failures crash the ETL.
+        raise

@@ -11,5 +11,8 @@ __pycache__/
 # VS Code
 .vscode/
 
-# CSV exports
-data/raw/*.csv
+
+# Generated data
+data/raw/
+data/exports/
+data/Spotify_json_files/
