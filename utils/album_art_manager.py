@@ -56,8 +56,13 @@ def ensure_directory():
 
 
 def github_url(album_id):
-    """Return the GitHub raw URL for an album image."""
-    return f"{RAW_BASE_URL}/{album_id}.jpg"
+    """
+    Return the GitHub raw URL for an album image.
+    """
+
+    filename = f"{album_id}.jpg"
+
+    return f"{RAW_BASE_URL}/{filename}"
 
 
 # -------------------------------------------------------------------
@@ -118,13 +123,14 @@ def download_missing_album_art():
         album_id = album["album_id"]
         spotify_url = album["spotify_album_art_url"]
 
-        filename = IMAGE_DIR / f"{album_id}.jpg"
+        filename = f"{album_id}.jpg"
+        filepath = IMAGE_DIR / filename
 
-        if filename.exists():
+        if filepath.exists():
             continue
 
         try:
-            download_image(spotify_url, filename)
+            download_image(spotify_url, filepath)
             downloaded += 1
             
             time.sleep(0.1)
@@ -149,10 +155,19 @@ def update_album_art_urls():
 
         album_id = album["album_id"]
 
-        local_file = IMAGE_DIR / f"{album_id}.jpg"
+        filename = f"{album_id}.jpg"
+        filepath = IMAGE_DIR / filename
 
-        if not local_file.exists():
+        if not filepath.exists():
             continue
+
+        if filepath.stat().st_size == 0:
+            raise ValueError(
+                f"Album artwork is empty: {filepath}"
+            )
+
+        if github_url(album_id).endswith("None.jpg"):
+            raise ValueError(f"Invalid album_id: {album_id}")
 
         execute_sql(
             """
