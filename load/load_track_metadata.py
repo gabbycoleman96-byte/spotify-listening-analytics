@@ -68,7 +68,7 @@ def get_missing_track_ids():
         ORDER BY
             COUNT(*) DESC,
             MAX(h.played_at) DESC
-            LIMIT 400;
+            LIMIT 600;
     """
 
     df = fetch_dataframe(query)
