@@ -180,7 +180,7 @@ def load_dataframe(
     df,
     table_name,
     ignore_duplicates=False,
-    batch_size=50000,
+    batch_size=8000,
 ):
     """
     Load a DataFrame into a MySQL table.
@@ -196,7 +196,7 @@ def load_dataframe(
     ignore_duplicates : bool, default False
         Use INSERT IGNORE.
 
-    batch_size : int, default 50000
+    batch_size : int, default 8000
         Number of rows per batch.
 
     Returns

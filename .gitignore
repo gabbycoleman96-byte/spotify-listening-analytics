@@ -13,9 +13,7 @@ __pycache__/
 
 
 # Generated data
-data/raw/
-data/exports/
-data/Spotify_json_files/
+data/
 
 #tableau icons
 assets/Spotify_Project_Icons

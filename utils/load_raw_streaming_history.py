@@ -12,7 +12,7 @@ import pandas as pd
 from load.loader import load_dataframe
 
 
-CSV_FILE = Path("Spotify_json_files") / "listening_history_raw.csv"
+CSV_FILE = Path("data") / "Spotify_json_files" / "listening_history_raw.csv"
 
 TABLE_NAME = "listening_history_raw"
 

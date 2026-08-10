@@ -24,11 +24,11 @@ import pandas as pd
 # Configuration
 # ============================================================
 
-INPUT_FOLDER = Path("Spotify_json_files")
+INPUT_FOLDER = Path("data") / "Spotify_json_files"
 
 OUTPUT_FILE = (
     INPUT_FOLDER
-    / "spotify_streaming_history_raw.csv"
+    / "listening_history_raw.csv"
 )
 
 

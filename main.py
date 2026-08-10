@@ -379,7 +379,7 @@ def main():
         print_pipeline_header()
 
         liked_result = run_liked_songs_stage()
-        recent_result = run_recent_tracks_stage()
+        #recent_result = run_recent_tracks_stage()
         track_metadata_result = run_track_metadata_stage()
         album_art_result = run_album_art_stage()
         warehouse_result = run_warehouse_stage()
@@ -390,7 +390,7 @@ def main():
         print_performance_summary(
             [
                 ("Liked Songs", liked_result),
-                ("Recent Tracks", recent_result),
+                #("Recent Tracks", recent_result),
                 ("Track Metadata", track_metadata_result),
                 ("Album Art", album_art_result),
                 ("Warehouse", warehouse_result),
