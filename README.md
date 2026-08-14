@@ -1,87 +1,97 @@
 # Spotify Listening Analytics
 
-> An end-to-end data engineering and analytics project that automatically collects, stores, transforms, and visualizes Spotify listening history using Python, MySQL, and Tableau.
+> An end-to-end personal Spotify data engineering and analytics project that collects listening history, transforms it into a MySQL warehouse, enriches the data, and powers a Tableau Public dashboard.
 
-![Version](https://img.shields.io/badge/version-1.0.0-success)
+![Pipeline](https://img.shields.io/badge/pipeline-1.0.0-success)
+![Warehouse](https://img.shields.io/badge/warehouse-1.1-blue)
 ![Python](https://img.shields.io/badge/Python-3.x-blue)
 ![MySQL](https://img.shields.io/badge/MySQL-8.x-orange)
 ![Tableau](https://img.shields.io/badge/Tableau-Public-blue)
 
 ---
 
-## Overview
+## Current Status
 
-Spotify Listening Analytics is a portfolio project that demonstrates the complete analytics lifecycle, from raw API data to interactive business intelligence dashboards.
+**Dashboard completion phase**
 
-Rather than relying on static datasets, this project continuously builds a personal Spotify data warehouse by combining:
+The core ETL pipeline is operational and has been running successfully on a recurring schedule. The current priority is finishing the Tableau Public dashboard rather than adding new infrastructure.
 
-- Historical Spotify Extended Streaming History exports
-- Live Spotify Web API data
-- Automated ETL processing
-- SQL-based analytics
-- Tableau Public dashboards
+The project currently contains:
 
-The result is a fully automated reporting pipeline that requires little manual intervention once configured.
+- A permanent raw Spotify listening-history table
+- A transformed listening-history warehouse
+- Spotify metadata enrichment
+- Data-quality and anomaly flags
+- Calendar and listening-behavior dimensions
+- SQL analytics
+- Tableau-ready exports
+- Automated ETL execution
+- A multi-page Tableau Public dashboard
 
----
-
-## Project Goals
-
-This project was designed to demonstrate practical data engineering and analytics skills commonly used in production environments.
-
-Specifically, it showcases:
-
-- Designing and maintaining a relational data warehouse
-- Building modular ETL pipelines in Python
-- Working with REST APIs
-- Automating recurring workflows
-- Creating reusable SQL analytics tables
-- Building interactive Tableau dashboards
-- Writing maintainable, documented code
+Infrastructure improvements are intentionally deferred until the dashboard is complete.
 
 ---
 
-# Architecture
+# Overview
+
+Spotify Listening Analytics began as a Tableau dashboard project and evolved into a small personal data platform.
+
+The project uses Spotify Extended Streaming History as the authoritative historical listening source and stores the data in MySQL. Python handles extraction, cleaning, transformation, enrichment, loading, analytics, and export.
 
 ```text
-                    Spotify Web API
-                           │
-         ┌─────────────────┴─────────────────┐
-         │                                   │
-Liked Songs API                  Recently Played API
-         │                                   │
-         └──────────────┬────────────────────┘
-                        │
-              Python ETL Pipeline
-                        │
-        Historical Spotify Export Import
-                        │
-                        ▼
-        spotify_listening_warehouse (MySQL)
-                        │
-          ┌─────────────┼──────────────┐
-          │             │              │
-          ▼             ▼              ▼
- Artist Analytics  Listening Analytics  Library Analytics
-          │             │              │
-          └─────────────┼──────────────┘
-                        │
-                 CSV Export Pipeline
-                        │
-                        ▼
-                 Tableau Public
+Spotify Extended Streaming History
+                │
+                ▼
+       listening_history_raw
+                │
+                ▼
+       Cleaning / Transform
+                │
+                ├── duplicate removal
+                ├── impossible-play detection
+                ├── offline timestamp correction
+                ├── calendar dimensions
+                └── metadata enrichment
+                │
+                ▼
+    listening_history_warehouse
+                │
+        ┌───────┴────────┐
+        ▼                ▼
+   SQL Analytics     Tableau Export
+                         │
+                         ▼
+                   Tableau Public
 ```
+
+---
+
+# Project Goals
+
+The project demonstrates practical skills in:
+
+- Data engineering and ETL design
+- Relational data warehousing
+- Python data transformation
+- SQL analytics
+- Data quality and anomaly detection
+- API and historical-export integration
+- Tableau dashboard development
+- Workflow automation
+- Technical documentation
+
+The end goal is a portfolio-quality analytics product built from real personal listening data rather than a static sample dataset.
 
 ---
 
 # Repository Structure
 
 ```text
-spotify_etl/
+spotify-listening-analytics/
 
 ├── api/
 ├── config/
-├── export/
+├── data/
 ├── extract/
 ├── load/
 ├── sql/
@@ -93,48 +103,135 @@ spotify_etl/
 ├── testers/
 │
 ├── main.py
+├── combine_streaming_history.py
 ├── requirements.txt
 ├── README.md
+└── documentation/
 ```
+
+The exact repository contents may evolve, but the project is organized around extraction, loading, transformation, SQL analytics, testing, and exports.
 
 ---
 
 # ETL Pipeline
 
-The pipeline executes automatically every 30 minutes using Windows Task Scheduler.
+The current pipeline is executed automatically using Windows Task Scheduler.
 
-Each run performs the following steps:
+The recurring pipeline is intentionally focused on maintaining the warehouse and dashboard data. The previous 30-minute Recently Played workflow has been retired from the current design.
 
-1. Download newly liked songs from Spotify.
-2. Download the latest 50 recently played tracks.
-3. Refresh the snapshot table.
-4. Append new listening events to the warehouse.
-5. Rebuild analytics tables.
-6. Export Tableau-ready CSV files.
-7. Log execution statistics.
+Typical run:
+
+1. Process available Spotify listening history.
+2. Load or refresh the raw listening-history table.
+3. Build and clean the warehouse DataFrame.
+4. Apply metadata enrichment.
+5. Add data-quality and anomaly flags.
+6. Load `listening_history_warehouse`.
+7. Rebuild SQL analytics.
+8. Export Tableau-ready data.
+9. Record execution results.
+
+The warehouse is currently rebuilt during each run. This is a deliberate **Version 1 stability choice**. Incremental warehouse rebuilding is deferred to a future version.
 
 ---
 
-# Database Design
+# Data Sources
 
-## Core Tables
+## Spotify Extended Streaming History
 
-| Table | Purpose |
-|--------|---------|
-| spotify_listening_warehouse | Master fact table containing every listening event |
-| liked_songs | Current Spotify library |
-| recent_50_tracks_snapshot | Mirrors Spotify's Recently Played endpoint |
-| etl_log | Pipeline execution history |
+The historical Spotify export is the primary source for listening events.
 
-## Analytics Tables
+The current combined export contains approximately **824,845 raw records**, spanning:
 
-| Table | Purpose |
-|--------|---------|
-| artist_discovery | Artist discovery metrics |
-| artist_loyalty | Long-term artist engagement |
-| forgotten_favorites | Previously loved artists no longer played |
-| listening_session_summary | Listening session analysis |
-| repeat_behavior | Repeat listening patterns |
+```text
+2014-07-04 → 2026-08-07
+```
+
+The raw table preserves Spotify's source fields so that transformations can be re-run without modifying the original data.
+
+## Spotify Web API
+
+The API is used primarily for metadata and library enrichment.
+
+The project no longer depends on the Recently Played endpoint as a required recurring source for the dashboard warehouse.
+
+---
+
+# Data Quality
+
+The transformation layer applies several cleaning rules before loading the warehouse.
+
+### Exact duplicate removal
+
+Rows identical across the relevant raw Spotify playback fields are removed.
+
+### Duplicate-play removal
+
+Multiple records sharing the same timestamp and Spotify track are treated as duplicate representations of one playback event. The record with the greatest `ms_played` is retained.
+
+### Impossible-play removal
+
+Playback events that overlap an earlier valid playback of the same track beyond the configured tolerance are removed.
+
+### Anomaly flagging
+
+Suspicious repeating playback patterns are flagged rather than silently deleted.
+
+Current anomaly fields include:
+
+- `is_anomaly`
+- `anomaly_type`
+
+This allows Tableau to exclude or analyze questionable records without destroying the underlying historical evidence.
+
+### Offline playback correction
+
+Spotify's `offline_timestamp` is used when an offline playback has a valid timestamp.
+
+The export contains both Unix-second and Unix-millisecond timestamp values, so the transformation determines the appropriate unit from the timestamp magnitude before deriving `played_at` and its date/time dimensions.
+
+---
+
+# Warehouse
+
+The primary analytical table is:
+
+```text
+listening_history_warehouse
+```
+
+Its grain is:
+
+> One row = one listening event retained after transformation.
+
+The warehouse contains playback timestamps, calendar dimensions, track/artist/album information, Spotify identifiers, listening behavior, metadata, navigation/session fields, and data-quality flags.
+
+The raw source table is:
+
+```text
+listening_history_raw
+```
+
+The raw table is never modified by warehouse cleaning.
+
+---
+
+# Tableau Public Dashboard
+
+The dashboard is designed with Spotify-inspired visual styling and is the primary presentation layer.
+
+Current dashboard areas include:
+
+- Home
+- Artists / Headliners
+- Tracks & Albums
+- Discovery
+- Library Cleanup
+- Mobile / Now Playing
+
+The dashboard includes KPI cards, historical listening trends, artist and track analysis, daily/hourly listening patterns, "On This Day" analysis, and persistent Now Playing-style elements.
+
+The dashboard is the current project priority.
 
 ---
 
@@ -149,12 +246,13 @@ Each run performs the following steps:
 
 - MySQL 8
 
-### Libraries
+### Python Libraries
 
 - pandas
-- mysql-connector-python
+- SQLAlchemy
 - requests
 - python-dotenv
+- tqdm
 
 ### Visualization
 
@@ -166,54 +264,36 @@ Each run performs the following steps:
 
 ---
 
-# Features
+# Future Work
 
-## Automated ETL
+Future engineering work is intentionally deferred.
 
-- Incremental Spotify API ingestion
-- Historical streaming history import
-- Duplicate prevention
-- Automatic warehouse updates
+Potential Version 2 improvements include:
 
-## Analytics
+- Incremental warehouse loading
+- More sophisticated album/track identity handling
+- Expanded metadata enrichment
+- More advanced anomaly detection
+- Improved pipeline performance
+- Additional external music data sources
+- Automated playlist generation
+- Direct Spotify playlist creation
 
-- Artist discovery tracking
-- Loyalty metrics
-- Forgotten favorites
-- Listening session analysis
-- Repeat behavior
-
-## Dashboard
-
-- Interactive Tableau dashboards
-- Dynamic filtering
-- Automated data refresh
-- Mobile-inspired dashboard design
+These are ideas for later. They are **not current blockers** for Dashboard Version 1.0.0.
 
 ---
 
-# Future Enhancements
+# Documentation
 
-Version 1.1
+The project documentation is maintained alongside the codebase:
 
-- Genre enrichment
-- Album artwork
-- Dominant album colors
-- SQLAlchemy migration
-- Improved retry handling
-
-Version 2.0
-
-- Recommendation engine
-- Additional behavioral analytics
-- Cloud deployment
-- Direct database dashboards
-
----
-
-# Screenshots
-
-> Screenshots will be added after Dashboard Version 1.0 is complete.
+- `README.md` – Project overview and current state
+- `architechture.md` – System architecture and data flow
+- `CHANGELOG.md` – Major changes and milestones
+- `data_dictionary.md` – Database and warehouse reference
+- `design_decisions.md` – Architectural and technical reasoning
+- `project_journal.md` – Development history and lessons learned
+- `roadmap.md` – Current priorities and deferred work
 
 ---
 

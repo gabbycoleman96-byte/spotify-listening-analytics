@@ -2,24 +2,21 @@
 
 ## Purpose
 
-This document explains the architectural and technical decisions made throughout the development of Spotify Listening Analytics.
+This document records the important technical and architectural decisions behind Spotify Listening Analytics, including decisions made during the current dashboard-completion phase.
 
-Rather than simply documenting the implementation, this document focuses on the reasoning behind major design choices, including alternatives that were considered and why the final approach was selected.
+The project intentionally favors **stability over unnecessary refactoring** while Version 1 of the dashboard is being completed.
 
 ---
 
 # Guiding Principles
 
-Several principles guided every major decision throughout the project.
-
 - Simplicity over unnecessary complexity.
-- Automation over manual processes.
-- One source of truth.
-- Reusable components.
+- Automation over repetitive manual work.
+- One analytical source of truth.
+- Preserve raw data.
+- Centralize reusable logic.
 - Maintainability over premature optimization.
-- Design for future expansion.
-
-These principles often resulted in choosing a solution that required more work initially but significantly reduced long-term maintenance.
+- Finish the current version before expanding scope.
 
 ---
 
@@ -27,350 +24,259 @@ These principles often resulted in choosing a solution that required more work i
 
 ## Decision
 
-Create a centralized warehouse containing every listening event instead of generating multiple independent summary datasets.
+Use a centralized listening-history warehouse rather than maintaining independent summary tables for each visualization.
 
 ## Rationale
 
-Early versions of the project relied on manually maintained summary tables. While this approach worked initially, every new visualization required additional SQL queries and duplicated business logic.
+The project originally relied on many manually maintained summary tables. That approach caused business logic to become scattered across the project.
 
-A warehouse-first architecture provides a single source of truth that can support unlimited downstream analytics.
-
-Benefits include:
-
-- Consistent calculations
-- Easier maintenance
-- Simpler dashboard development
-- Better scalability
-- Reduced duplication
+A warehouse allows new Tableau views and SQL analyses to use the same underlying listening events.
 
 ---
 
-# Why MySQL?
+# Why Keep a Raw Table?
 
-Several storage options were considered.
+## Decision
 
-## SQLite
-
-Advantages
-
-- Extremely simple setup
-- Lightweight
-- Portable
-
-Disadvantages
-
-- Less representative of enterprise environments
-- Limited scalability
-- Fewer optimization opportunities
-
-## PostgreSQL
-
-Advantages
-
-- Excellent analytical capabilities
-- Strong SQL compliance
-
-Disadvantages
-
-- Additional learning curve
-- More administrative overhead for this project
-
-## MySQL (Selected)
-
-Reasons
-
-- Widely used in industry
-- Excellent documentation
-- Reliable Python support
-- Strong SQL feature set
-- Appropriate complexity for the project
-
----
-
-# Why Python?
-
-Python serves as the orchestration layer for the ETL pipeline.
-
-Responsibilities include:
-
-- API communication
-- JSON processing
-- Data transformation
-- Database loading
-- Export automation
-- Scheduling integration
-
-Separating orchestration from SQL keeps each language focused on its strengths.
-
----
-
-# Why SQL Analytics Instead of Tableau Calculations?
-
-Business logic belongs as close to the data as possible.
-
-Complex calculations are performed once inside MySQL rather than repeatedly inside Tableau.
-
-Advantages
-
-- Faster dashboards
-- Reusable analytics
-- Easier debugging
-- Centralized business logic
-- Consistent calculations
-
-The Tableau dashboards focus primarily on visualization rather than data processing.
-
----
-
-# Why Use a Snapshot Table?
-
-The project maintains a dedicated table named:
+Preserve Spotify's imported history in:
 
 ```text
-recent_50_tracks_snapshot
+listening_history_raw
 ```
 
-This table mirrors Spotify's "Recently Played" endpoint.
+## Rationale
 
-Reasons
+The raw table provides a stable source from which the warehouse can be rebuilt whenever transformation rules change.
 
-- Simplifies debugging
-- Makes API responses inspectable
-- Separates raw API data from the warehouse
-- Provides an intermediate validation layer
-
-Only validated data is appended into the warehouse.
+This is particularly important because Spotify's historical export contains quirks that may require new cleaning rules later.
 
 ---
 
-# Why Remove listening_history_api?
+# Why Clean in Python?
 
-Earlier versions of the project contained an intermediate table that stored API listening history before loading the warehouse.
+## Decision
 
-As the architecture evolved, this table became unnecessary.
+Perform the main cleaning and transformation in an in-memory pandas DataFrame.
 
-Original flow
+## Rationale
 
-```text
-Spotify API
+Python provides a clear place to implement:
 
-↓
+- Duplicate handling
+- Timestamp correction
+- Calendar dimensions
+- Metadata enrichment
+- Anomaly detection
 
-Snapshot
-
-↓
-
-Listening History API
-
-↓
-
-Warehouse
-```
-
-Current flow
-
-```text
-Spotify API
-
-↓
-
-Snapshot
-
-↓
-
-Warehouse
-```
-
-Removing the intermediate table reduced:
-
-- complexity
-- maintenance
-- duplicated storage
-- unnecessary transformations
-
-without losing functionality.
+The raw MySQL table remains untouched.
 
 ---
 
-# Why a Warehouse Instead of Dashboard Data?
+# Duplicate Strategy
 
-Earlier versions referred to the primary table as:
+## Exact duplicates
 
-```text
-dashboard_data
-```
+Identical Spotify playback records are removed.
 
-This name implied the table existed only to support Tableau.
+## Same timestamp + same track
 
-The project has evolved beyond that.
+Multiple records with the same timestamp and Spotify track are treated as duplicate representations of the same event.
 
-The table now supports:
+The record with the greatest `ms_played` is retained.
 
-- SQL analytics
-- Tableau
-- Python analysis
-- Future Power BI dashboards
-- Future machine learning experiments
+## Why?
 
-The new name
-
-```text
-spotify_listening_warehouse
-```
-
-better reflects its role as the project's central repository.
+Legitimate repeat listening is common, so deduplication must distinguish duplicated records from genuinely separate plays.
 
 ---
 
-# Why Relative Paths?
+# Impossible Playback Strategy
 
-Early development used absolute file paths.
+## Decision
 
-Example
+Remove playback events that overlap an earlier valid playback of the same track beyond the configured tolerance.
+
+## Rationale
+
+A track beginning before the previous playback of that same track could reasonably have finished is considered impossible under the project's playback model.
+
+This is a data-quality rule, not a claim that Spotify's source record itself is invalid.
+
+---
+
+# Anomaly Strategy
+
+## Decision
+
+Do not automatically delete every suspicious listening pattern.
+
+Instead, flag suspicious repeating playback loops with:
 
 ```text
-C:\Users\Gabby\Downloads\spotify_etl
+is_anomaly
+anomaly_type
 ```
 
-This prevented the project from moving between computers.
+## Rationale
 
-The project now resolves paths relative to the project root.
+The project needs to distinguish between:
 
-Advantages
+- Data that is definitely duplicate or impossible
+- Data that is unusual but could represent real Spotify behavior
+
+The July 5, 2022 repeating playback sequence is the clearest example. It produces hundreds of records for five tracks in a repeating pattern. Those records are now identifiable without silently destroying the historical source.
+
+For dashboard metrics where these records would distort results, the anomaly flag can be used as a filter.
+
+---
+
+# Offline Timestamp Decision
+
+## Decision
+
+When:
+
+```text
+offline = true
+```
+
+and a valid `offline_timestamp` exists, use the offline timestamp as the canonical `played_at`.
+
+## Rationale
+
+Spotify's `ts` can represent the time an offline playback record was synchronized rather than the actual playback time.
+
+The historical export contains both seconds-scale and milliseconds-scale `offline_timestamp` values. The transformation therefore determines the timestamp unit from its magnitude before conversion.
+
+After correction, all calendar and time-of-day dimensions are derived from `played_at`.
+
+---
+
+# Why `played_at` Is the Canonical Timestamp
+
+All dashboard time dimensions derive from:
+
+```text
+played_at
+```
+
+This prevents individual worksheets from making different assumptions about whether they should use Spotify's raw `ts` or an offline playback timestamp.
+
+---
+
+# Why Use Album Artwork URL as the Practical Album Identifier?
+
+## Decision
+
+For current dashboard work, the album artwork URL is acceptable as the practical unique identifier for album artwork.
+
+## Rationale
+
+The warehouse already contains album artwork URLs for the enriched tracks, and the dashboard primarily needs a stable way to associate artwork with the relevant album/image.
+
+A formal album dimension or more sophisticated album identity model can be added later if needed.
+
+---
+
+# Why Rebuild the Warehouse?
+
+## Current Decision
+
+The warehouse is currently rebuilt from the transformed raw history during each pipeline run.
+
+## Rationale
+
+It is reliable, easy to reason about, and currently working.
+
+An incremental warehouse strategy would reduce processing time, but implementing it safely requires additional architectural work.
+
+**That optimization is intentionally deferred.**
+
+The current goal is to finish the Tableau dashboard without destabilizing the working ETL.
+
+---
+
+# Why Reduce the ETL Schedule?
+
+## Decision
+
+The recurring pipeline no longer needs to run every 30 minutes.
+
+## Rationale
+
+The project no longer depends on continuously refreshing the Recently Played endpoint as a required source of new listening events.
+
+A lower-frequency schedule is sufficient for the current workflow and reduces unnecessary repeated warehouse processing.
+
+---
+
+# Why Tableau Public?
+
+## Decision
+
+Use Tableau Public as the presentation layer.
+
+## Rationale
+
+The project is intended as a portfolio artifact.
+
+Tableau Public makes the finished dashboard easy to share while allowing the data-engineering work to remain the foundation behind it.
+
+---
+
+# Why CSV Exports?
+
+CSV exports provide a simple bridge between MySQL/Python and Tableau Public.
+
+Benefits:
 
 - Portable
-- GitHub friendly
-- Google Drive compatible
-- Cross-machine development
-
----
-
-# Why Export CSV Files?
-
-Several options were considered.
-
-## Direct MySQL Connection
-
-Advantages
-
-- Live database connection
-- No intermediate files
-
-Disadvantages
-
-- More difficult for public portfolio sharing
-- Additional setup required
-
-## CSV Export (Selected)
-
-Advantages
-
-- Simple
-- Portable
-- Tableau Public compatible
-- Easy to version
 - Easy to inspect
-
-This approach prioritizes accessibility and reproducibility for portfolio reviewers.
+- Tableau-compatible
+- Easy to replace after each ETL run
+- No live database infrastructure required for Tableau Public
 
 ---
 
-# Why a Modular ETL?
+# Current Stability Boundary
 
-The ETL is separated into independent stages.
+During Dashboard Version 1.0.0, the following are explicitly considered **out of scope unless they become necessary to finish the dashboard**:
 
-```text
-Extract
+- Warehouse incremental loading
+- Major schema redesign
+- New external data sources
+- Broad ETL refactoring
+- Performance optimization
+- Playlist automation
+- Additional enrichment that does not support a dashboard requirement
 
-↓
+The principle is:
 
-Transform
-
-↓
-
-Load
-
-↓
-
-Analytics
-
-↓
-
-Export
-```
-
-Benefits
-
-- Easier testing
-- Clear responsibilities
-- Better readability
-- Simpler maintenance
-- Independent upgrades
+> If the current system works and the dashboard can be finished without changing it, leave it alone.
 
 ---
 
 # Versioning Philosophy
 
-The project intentionally distinguishes between feature development and refinement.
+## Pipeline Version 1.0.0
 
-## Version 1.0
+Established the working automated ETL and warehouse architecture.
 
-Goal
+## Warehouse Version 1.1
 
-Create a reliable, maintainable, automated analytics platform.
+Adds the current enrichment, data-quality, anomaly, and dashboard-supporting fields.
 
-Focus
+## Dashboard Version 1.0.0
 
-- Correctness
-- Documentation
-- Automation
-- Architecture
+Current focus.
 
-## Version 1.1
+Goal:
 
-Focus
+- Complete the dashboard
+- Validate KPIs
+- Polish interactions
+- Publish the portfolio-ready result
 
-- Performance improvements
-- Additional enrichment
-- Retry logic
-- SQLAlchemy
-- Incremental historical imports
+## Future Versions
 
-## Version 2
-
-Focus
-
-New functionality rather than infrastructure improvements.
-
-Examples
-
-- Recommendation engine
-- Machine learning
-- Behavioral prediction
-- Additional dashboards
-
----
-
-# Lessons Learned
-
-Several important software engineering lessons emerged during development.
-
-## Architecture Matters
-
-Investing time in project organization significantly reduced later complexity.
-
-## Naming Matters
-
-Clear, descriptive names reduced confusion and improved maintainability.
-
-## Build Once, Reuse Everywhere
-
-Centralizing business logic inside the warehouse eliminated duplicated calculations.
-
-## Finish Before Expanding
-
-Many interesting feature ideas emerged during development.
-
-Rather than continually expanding scope, Version 1 intentionally prioritizes a complete, polished product before adding additional capabilities.
-
-This decision keeps the project focused while providing a stable foundation for future releases.
+Infrastructure improvements and new features can be addressed after the dashboard is complete.

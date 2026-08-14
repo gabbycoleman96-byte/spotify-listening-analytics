@@ -1,161 +1,139 @@
 # Changelog
 
-All notable changes to this project are documented in this file.
+All notable changes to Spotify Listening Analytics are documented here.
 
-This project follows Semantic Versioning.
+The project uses release milestones to distinguish stable functionality from future improvements.
 
 ---
 
-# [1.0.0] - Initial Release
+# [2026-08-13] – Dashboard Completion Checkpoint
 
-## Overview
+## Current State
 
-Version 1.0.0 represents the completion of the project's data engineering phase.
+The core data engineering pipeline is operational and the project has moved into the **Dashboard Version 1.0.0 completion phase**.
 
-The project evolved from a manually maintained SQL dashboard into a fully automated analytics platform built around a centralized data warehouse.
+The priority is now finishing the Tableau Public dashboard. Nonessential ETL refactoring is intentionally deferred.
 
 ---
 
 ## Added
 
-### Data Collection
+### Raw Listening History
 
-- Spotify Web API integration
-- Historical Streaming History importer
-- Incremental liked song downloads
-- Incremental recently played downloads
+- Added the combined Spotify Extended Streaming History workflow.
+- Current combined export contains approximately 824,845 records.
+- Historical coverage currently extends from 2014-07-04 through 2026-08-07.
 
----
+### Data Quality
 
-### ETL Pipeline
+Added/established warehouse quality handling for:
 
-- Automated Python ETL pipeline
-- Warehouse loader
-- Data transformation layer
-- Duplicate protection
-- Execution logging
+- Exact duplicate records
+- Duplicate timestamp + Spotify track records
+- Impossible overlapping playback
+- Repeating playback-loop anomaly flags
 
----
+Current anomaly fields:
 
-### Database
+```text
+is_anomaly
+anomaly_type
+```
 
-- MySQL warehouse
-- Analytics tables
-- Snapshot staging table
-- ETL logging table
+### Offline Playback Handling
 
----
+Added correction logic using Spotify's `offline_timestamp` when available.
 
-### Analytics
+The export contains both Unix-second and Unix-millisecond timestamp values, so the transformation determines the timestamp scale before conversion.
 
-Added automated SQL generation for:
-
-- Artist Discovery
-- Artist Loyalty
-- Forgotten Favorites
-- Listening Session Summary
-- Repeat Behavior
-
----
-
-### Export
-
-- Automated Tableau CSV exports
-
----
-
-### Documentation
-
-Added
-
-- README
-- Architecture documentation
-- Design Decisions
-- Data Dictionary
-- Project Journal
-- Roadmap
-- Changelog
+The corrected `played_at` value is then used to generate date and time dimensions.
 
 ---
 
 ## Changed
 
-### Architecture
+### Warehouse
 
-Migrated from manually maintained summary tables to a warehouse-first architecture.
-
----
-
-Renamed
+The active warehouse is:
 
 ```text
-dashboard_data
+listening_history_warehouse
 ```
 
-↓
+The raw source table is:
 
 ```text
-spotify_listening_warehouse
+listening_history_raw
 ```
+
+The raw table remains unchanged during cleaning.
+
+### ETL Scheduling
+
+The project no longer relies on the Recently Played endpoint as a required recurring listening-history source.
+
+The previous 30-minute schedule is therefore no longer necessary for the current architecture. The recurring job can run at a lower frequency appropriate to the current workflow.
+
+### Project Priority
+
+The project has moved from infrastructure development to dashboard completion.
 
 ---
 
-Renamed
+## Validated
+
+The current raw history was validated at:
 
 ```text
-recent_tracks_snapshot
+824,845 rows
+First play: 2014-07-04 03:56:48
+Last play:  2026-08-07 23:59:41
 ```
 
-↓
-
-```text
-recent_50_tracks_snapshot
-```
+The rebuilt warehouse was also validated against the raw source and contains approximately 804,193 retained records after transformation.
 
 ---
 
-Removed the intermediate
+## Deferred
 
-```text
-listening_history_api
-```
+The following are intentionally deferred rather than considered V1 blockers:
 
-table.
-
----
-
-Reorganized repository structure.
-
----
-
-Converted project paths to relative paths for portability.
+- Incremental warehouse loading
+- Warehouse rebuild optimization
+- Additional large-scale schema changes
+- New external music-data integrations
+- Playlist generation
+- Further enrichment unless required by the dashboard
 
 ---
 
-## Fixed
+# [1.0.0] - Initial Pipeline Release
 
-Resolved duplicate warehouse imports.
+Version 1.0.0 established the core automated data engineering platform.
 
-Standardized timestamp parsing across historical exports and live Spotify API data.
+## Added
 
-Improved incremental loading.
+- Spotify Web API integration
+- Historical Spotify Streaming History importer
+- MySQL warehouse
+- Python ETL pipeline
+- Data transformation layer
+- Duplicate protection
+- SQL analytics
+- Tableau-ready CSV exports
+- Windows Task Scheduler automation
+- Project documentation
 
-Simplified ETL execution.
+## Changed
 
-Improved naming consistency throughout the project.
-
----
-
-## Removed
-
-Retired legacy summary tables.
-
-Removed obsolete migration scripts.
-
-Eliminated duplicate ETL logic.
+- Migrated from multiple manually maintained summary tables to a warehouse-first architecture.
+- Retired legacy summary datasets.
+- Centralized reusable analytics logic.
 
 ---
 
 # Future
 
-See `roadmap.md` for planned enhancements.
+Future enhancements are tracked in `roadmap.md`.
+
+The next major milestone is **Dashboard Version 1.0.0 completion**, not another ETL rewrite.

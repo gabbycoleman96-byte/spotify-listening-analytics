@@ -2,176 +2,198 @@
 
 ## Purpose
 
-This roadmap outlines the planned evolution of Spotify Listening Analytics beyond Version 1.0.0.
+This roadmap describes the planned evolution of Spotify Listening Analytics while keeping the current project focused.
 
-The project follows semantic versioning, where each major release focuses on a specific objective while avoiding unnecessary scope expansion.
+The immediate goal is to **finish Dashboard Version 1.0.0**.
 
-The goal is to continuously improve the project without compromising stability or maintainability.
+Future engineering improvements remain valuable, but they are deliberately separated from the current milestone so the project can actually ship.
 
 ---
 
-# Version 1.0.0 (Current)
+# Current Milestone: Dashboard Version 1.0.0
 
 ## Objective
 
-Build a complete, automated Spotify analytics platform.
+Complete and publish the Tableau Public dashboard using the current working ETL and warehouse.
+
+### Remaining Priorities
+
+- Finish remaining dashboard pages
+- Complete KPI calculations
+- Validate KPI results against the warehouse
+- Apply anomaly filters where necessary
+- Finish tooltips and interactions
+- Polish visual consistency
+- Complete mobile/Now Playing presentation
+- Publish the portfolio-ready Tableau Public dashboard
+
+### Status
+
+**In progress**
+
+---
+
+# Pipeline Version 1.0.0
+
+## Objective
+
+Create a reliable automated ETL foundation.
 
 ### Completed
 
-✔ Historical Spotify Streaming History importer
+- Historical Spotify Streaming History ingestion
+- Raw MySQL table
+- Warehouse transformation
+- Duplicate handling
+- Impossible-play detection
+- Metadata enrichment
+- Data-quality/anomaly flags
+- SQL analytics
+- Tableau exports
+- Windows Task Scheduler automation
+- Execution logging
 
-✔ Spotify Web API integration
+### Status
 
-✔ Automated ETL pipeline
-
-✔ MySQL listening warehouse
-
-✔ Analytics SQL layer
-
-✔ Automated CSV exports
-
-✔ Windows Task Scheduler automation
-
-✔ Project documentation
-
-✔ Tableau dashboard framework
-
-Status
-
-**Complete**
+**Stable / complete for current dashboard work**
 
 ---
 
-# Version 1.1
+# Warehouse Version 1.1
 
-## Objective
+## Current Capabilities
 
-Refine the existing platform without changing its overall architecture.
+The warehouse now supports:
 
-### Planned Features
+- Calendar and time dimensions
+- Track/artist/album metadata
+- Spotify identifiers
+- Listening duration
+- Album artwork
+- Dominant album color
+- Navigation/session-related calculations
+- Play numbering
+- Data-quality flags
+- Repeating-playback anomaly flags
+- Offline playback timestamp correction
 
-### Data Enrichment
+### Status
 
-- Retrieve primary genre for every track
-- Retrieve secondary genre
-- Store album artwork URLs
-- Extract dominant album artwork colors
-- Store track popularity
-- Store release year
-
----
-
-### Pipeline Improvements
-
-- Incremental historical import support
-- SQLAlchemy database integration
-- Improved validation
-- Retry logic for Spotify API failures
-- Better error reporting
+**Current**
 
 ---
 
-### Performance
+# Version 2.0 – Infrastructure and Feature Expansion
 
-- Additional indexing
-- Faster warehouse loading
-- Export optimization
+Version 2 is where the deferred engineering work belongs.
 
----
+## Warehouse Improvements
 
-### Documentation
+- Incremental warehouse loading
+- Avoid rebuilding the entire warehouse on every run
+- More efficient loading and indexing
+- More formal track/album identity modeling
 
-- Architecture diagrams
-- Dashboard screenshots
-- ETL sequence diagrams
+## Data Quality
 
----
+- More sophisticated anomaly detection
+- Additional validation rules
+- Better handling of Spotify export edge cases
 
-# Version 2.0
+## Metadata
 
-## Objective
+Potential additions:
 
-Expand analytical capabilities.
+- More complete genre information
+- Release metadata
+- Additional Spotify track attributes
+- External music metadata
 
-Potential features include:
+## Analytics
 
-### Behavioral Analytics
+Potential additions:
 
 - Listening streaks
-- Mood analysis
-- Listening habit changes
+- More advanced session analysis
 - Artist lifecycle analysis
+- Long-term behavioral trends
+- More detailed discovery metrics
 
----
+## Playlist Generation
 
-### Recommendation Engine
+Potential future feature:
 
-Explore recommendation systems based on:
+- Generate playlists from the warehouse and metadata
+- Create decade-based playlists
+- Create vibe/theme playlists
+- Evaluate existing playlists for fit
+- Potentially automate playlist creation through Spotify
 
-- Listening history
-- Artist similarity
-- Genre preferences
-- Seasonal trends
+## External Integrations
 
----
-
-### Dashboard Expansion
-
-Potential dashboard pages
-
-- Genres
-- Albums
-- Listening Sessions
-- Discovery Timeline
-- Listening Calendar
-- Annual Spotify Wrapped
-
----
-
-### Additional Integrations
-
-Potential future data sources
+Potential future sources:
 
 - Last.fm
 - MusicBrainz
 - Discogs
+- Other music metadata services
 
 ---
 
 # Long-Term Ideas
 
-Ideas below are intentionally not scheduled.
+These are intentionally unscheduled.
 
-These concepts remain outside the scope of Version 1.
-
-Examples include:
-
+- Recommendation engine
 - Machine learning
 - Predictive listening models
 - Cloud deployment
 - Docker
 - Web application
-- Mobile dashboard
-- Direct Tableau database connection
+- Mobile application
 - Power BI version
-- Personal recommendation engine
+- Direct database-backed dashboard
+- More advanced Spotify automation
+
+---
+
+# Explicitly Deferred
+
+The following are **not current problems to solve**:
+
+- Warehouse rebuild optimization
+- Incremental processing
+- Major schema refactoring
+- New external data sources
+- Playlist automation
+- Additional enrichment that does not support an existing dashboard requirement
+
+They become relevant after Dashboard Version 1.0.0 is complete.
 
 ---
 
 # Guiding Philosophy
 
-One lesson became clear during development:
+```text
+Make it work
+      ↓
+Make the dashboard whole
+      ↓
+Ship Version 1
+      ↓
+Then optimize
+      ↓
+Then add shiny things
+```
 
-> A project is never truly finished, but every version should be.
+The project has accumulated enough infrastructure to support the dashboard.
 
-Future ideas are intentionally separated into later releases.
-
-This keeps Version 1 stable while providing a clear direction for future development.
+The next achievement is finishing the thing users can actually see.
 
 ---
 
-# Current Focus
+# Next Release Target
 
-The immediate priority following Pipeline Version 1.0.0 is completing Dashboard Version 1.0.0 for Tableau Public.
+After the Tableau Public dashboard is complete, the project can begin a controlled Version 2 planning pass.
 
-Once the dashboard is published, development will shift toward Version 1.1 improvements.
+No major infrastructure changes should be introduced solely because they are interesting while Dashboard Version 1.0.0 is still unfinished.
