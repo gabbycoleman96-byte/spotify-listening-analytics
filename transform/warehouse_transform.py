@@ -99,9 +99,41 @@ def add_date_dimensions(df):
 
     df = df.copy()
 
+    # Use the actual offline playback timestamp when available.
+    # Spotify has exported offline_timestamp in both Unix seconds
+    # and Unix milliseconds across different records.
+
+    offline_mask = (
+        (df["offline"] == 1)
+        & (df["offline_timestamp"].notna())
+    )
+
     df["played_at"] = pd.to_datetime(
         df["played_at"],
         format="mixed"
+    )
+
+    offline_values = pd.to_numeric(
+        df.loc[offline_mask, "offline_timestamp"],
+        errors="coerce"
+    )
+
+    milliseconds_mask = offline_values >= 100_000_000_000
+
+    df.loc[
+        offline_values.index[milliseconds_mask],
+        "played_at"
+    ] = pd.to_datetime(
+        offline_values[milliseconds_mask],
+        unit="ms"
+    )
+
+    df.loc[
+        offline_values.index[~milliseconds_mask],
+        "played_at"
+    ] = pd.to_datetime(
+        offline_values[~milliseconds_mask],
+        unit="s"
     )
 
     df["date"] = df["played_at"].dt.date

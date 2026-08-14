@@ -325,6 +325,9 @@ def reorder_columns(df):
 
         "shuffle_state",
         "skipped",
+        
+        "is_anomaly",
+        "anomaly_type",
 
         "track_name",
         "artist_name",
@@ -395,6 +398,43 @@ def reorder_columns(df):
 
     return df[columns]
 
+# ============================================================
+# Data Quality
+# ============================================================
+
+def add_data_quality_flags(df):
+
+    print("\nAdding data quality flags...")
+
+    df["is_anomaly"] = 0
+    df["anomaly_type"] = None
+
+    repeating_loop_tracks = [
+        "Everybody Talks",
+        "Champion",
+        "Young Volcanoes",
+        "Body Talks (feat. Kesha)",
+        "Could Have Been Me",
+    ]
+
+    repeating_loop = (
+        (df["played_at"] >= pd.Timestamp("2022-07-05 03:35:45"))
+        & (df["played_at"] <= pd.Timestamp("2022-07-05 22:16:47"))
+        & (df["track_name"].isin(repeating_loop_tracks))
+    )
+
+    df.loc[repeating_loop, "is_anomaly"] = 1
+    df.loc[repeating_loop, "anomaly_type"] = (
+        "repeating_playback_loop"
+    )
+
+    flagged = repeating_loop.sum()
+
+    print(
+        f"Flagged {flagged:,} anomalous playback records."
+    )
+
+    return df
 
 # ============================================================
 # Master
@@ -411,6 +451,7 @@ def enrich_warehouse(df):
 
     df = add_liked_status(df)
     df = add_track_metadata(df)
+    df = add_data_quality_flags(df)
     df = add_play_numbers(df)
     df = add_navigation_columns(df)
     df = add_session_columns(df)
@@ -418,3 +459,4 @@ def enrich_warehouse(df):
     df = add_running_counts(df)
 
     return reorder_columns(df)
+
