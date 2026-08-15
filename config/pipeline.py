@@ -19,6 +19,8 @@ EXPORT_TABLES = [
 
     "artist_summary",
 
-    "liked_songs"
+    "liked_songs",
+    
+    "album_listening_sequences"
 
 ]

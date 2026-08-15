@@ -43,7 +43,34 @@ ranked AS (
 
 )
 
-SELECT *
+SELECT
+    artist_name,
+
+    total_streams,
+    total_milliseconds,
+    total_minutes,
+    total_hours,
+    total_days,
+
+    first_played,
+    last_played,
+    liked_song_count,
+
+    artist_rank,
+
+    CAST(NULL AS CHAR(255)) AS top_song,
+    CAST(NULL AS UNSIGNED) AS top_song_play_count,
+    CAST(NULL AS DECIMAL(10,1)) AS top_song_minutes,
+
+    CAST(NULL AS CHAR(255)) AS top_album,
+    CAST(NULL AS UNSIGNED) AS top_album_play_count,
+    CAST(NULL AS DECIMAL(10,1)) AS top_album_minutes,
+
+    CAST(NULL AS UNSIGNED) AS top_year,
+    CAST(NULL AS UNSIGNED) AS top_year_play_count,
+    CAST(NULL AS DECIMAL(10,1)) AS top_year_minutes,
+
+    CAST(NULL AS CHAR(1000)) AS artist_note
 
 FROM ranked
 

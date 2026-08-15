@@ -1,12 +1,12 @@
 """
-rebuild_analytics.py
+rebuild_summary_tables.py
 
 Author:
     Gabby Coleman
 
 Purpose
 -------
-Rebuilds every analytics table used by Tableau.
+Rebuilds every summary table used by Tableau.
 """
 
 from pathlib import Path

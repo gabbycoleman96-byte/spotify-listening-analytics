@@ -16,7 +16,7 @@ WITH year_stats AS (
         COUNT(*) AS play_count,
         ROUND(SUM(ms_played) / 60000, 1) AS total_minutes
 
-    FROM spotify_listening_warehouse
+    FROM listening_history_warehouse
 
     WHERE artist_name IS NOT NULL
 
