@@ -158,6 +158,72 @@ def add_date_dimensions(df):
     return df
 
 
+def add_album_longest_streak(df):
+    """
+    Calculate the longest consecutive-day listening streak for each album.
+
+    The streak is based on whether the album was listened to on consecutive
+    calendar days. Listening multiple times on the same day counts as one day.
+
+    The calculated album-level value is repeated across every warehouse row
+    belonging to that album.
+    """
+
+    df = df.copy()
+
+    # Default value
+    df["album_longest_streak_days"] = None
+
+    # We need both an album identifier and a valid date.
+    valid_mask = (
+        df["album_art_url"].notna()
+        & df["date"].notna()
+    )
+
+    if not valid_mask.any():
+        return df
+
+    album_dates = (
+        df.loc[valid_mask, ["album_art_url", "date"]]
+        .drop_duplicates()
+    )
+
+    album_dates["date"] = pd.to_datetime(album_dates["date"])
+
+    longest_streaks = {}
+
+    for album_id, group in album_dates.groupby("album_art_url"):
+
+        dates = sorted(group["date"].unique())
+
+        if not dates:
+            continue
+
+        longest_streak = 1
+        current_streak = 1
+
+        for i in range(1, len(dates)):
+
+            if dates[i] - dates[i - 1] == pd.Timedelta(days=1):
+                current_streak += 1
+            else:
+                current_streak = 1
+
+            longest_streak = max(
+                longest_streak,
+                current_streak
+            )
+
+        longest_streaks[album_id] = longest_streak
+
+    df.loc[valid_mask, "album_longest_streak_days"] = (
+        df.loc[valid_mask, "album_art_url"]
+        .map(longest_streaks)
+    )
+
+    return df
+
+
 # ============================================================
 # Warehouse Metadata
 # ============================================================
@@ -209,8 +275,10 @@ def build_warehouse_dataframe():
         & df["spotify_uri"].notna()
     ].copy()
 
-    print(f"Removed {before - len(df):,} rows with no track metadata.")
+    print(f"Removed {before - len(df):,} non-music rows .")
 
     df = enrich_warehouse(df)
+    
+    df = add_album_longest_streak(df)
 
     return df

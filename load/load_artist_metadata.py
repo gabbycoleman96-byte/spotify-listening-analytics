@@ -38,13 +38,12 @@ def get_missing_artist_ids():
             ta.artist_id IS NOT NULL
             AND (
                 a.artist_id IS NULL
-                OR a.genres IS NULL
-                OR a.image_url IS NULL
+                OR a.scraped_at IS NULL
             )
         ORDER BY
             ta.artist_id
         LIMIT 600;
-    """
+        """
 
     df = fetch_dataframe(query)
 
@@ -216,8 +215,10 @@ def update_artist_metadata(df):
 
     for record in df.to_dict("records"):
 
-        # MySQL JSON column needs JSON text rather than
-        # a Python list.
+        for key, value in record.items():
+            if pd.isna(value):
+                record[key] = None
+
         if isinstance(record["genres"], list):
             import json
             record["genres"] = json.dumps(record["genres"])

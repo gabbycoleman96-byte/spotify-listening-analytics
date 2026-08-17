@@ -180,4 +180,5 @@ ADD COLUMN is_last_play BOOLEAN NULL,
 
 ADD COLUMN artist_play_count INT UNSIGNED NULL,
 ADD COLUMN album_play_count INT UNSIGNED NULL,
-ADD COLUMN track_play_count INT UNSIGNED NULL;
+ADD COLUMN track_play_count INT UNSIGNED NULL,
+ADD COLUMN album_longest_streak_days INT NULL;
