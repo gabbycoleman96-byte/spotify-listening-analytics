@@ -5,8 +5,9 @@ Refreshes the metadata and album analytics needed for
 the Tableau dashboard without rebuilding the listening
 history warehouse.
 
-Use this for normal dashboard updates after new Spotify
-track metadata has been collected.
+Use this for normal dashboard updates when metadata
+needs to be refreshed without rebuilding the listening
+history warehouse.
 
 Use main.py instead when a new Spotify Extended Streaming
 History export has been received.
@@ -16,6 +17,7 @@ from pathlib import Path
 
 from main import (
     run_track_metadata_stage,
+    run_artist_metadata_stage,
     run_album_art_stage,
 )
 
@@ -40,7 +42,13 @@ def refresh_dashboard():
     # Track Metadata
     # ========================================================
 
-    run_track_metadata_stage()
+    #run_track_metadata_stage()
+    
+    # ========================================================
+    # Artist Metadata
+    # ========================================================
+    
+    run_artist_metadata_stage()
 
     # ========================================================
     # Album Art

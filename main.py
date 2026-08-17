@@ -40,6 +40,12 @@ from load.loader import (
     load_dataframe,
 )
 
+from load.load_artist_metadata import (
+    get_missing_artist_ids,
+    download_artist_metadata,
+    update_artist_metadata,
+)
+
 from transform.warehouse_transform import (
     build_warehouse_dataframe,
 )
@@ -112,7 +118,7 @@ def run_liked_songs_stage():
     stage_start = perf_counter()
 
     stage_name = "Liked Songs"
-    print_stage_header(1, 7, stage_name)
+    print_stage_header(1, 8, stage_name)
     print("Checking for new liked songs...")
 
     latest_liked_song = get_latest_liked_song_date()
@@ -151,7 +157,7 @@ def run_recent_tracks_stage():
     stage_start = perf_counter()
 
     stage_name = "Recent Tracks"
-    print_stage_header(2, 7, stage_name)
+    print_stage_header(2, 8, stage_name)
     print("Downloading recently played tracks...")
 
     recent_df = download_recent_tracks()
@@ -257,7 +263,7 @@ def run_track_metadata_stage():
     stage_start = perf_counter()
 
     stage_name = "Track Metadata"
-    print_stage_header(3, 7, stage_name)
+    print_stage_header(3, 8, stage_name)
     print("Downloading metadata for new tracks...")
 
     metadata = load_track_metadata()
@@ -277,11 +283,44 @@ def run_track_metadata_stage():
     )
     
     
+def run_artist_metadata_stage():
+    stage_start = perf_counter()
+
+    stage_name = "Artist Metadata"
+    print_stage_header(4, 8, stage_name)
+    print("Downloading metadata for new artists...")
+
+    artist_ids = get_missing_artist_ids()
+
+    if not artist_ids:
+        print("No new artists require metadata.")
+
+        stage_runtime = perf_counter() - stage_start
+        print_stage_complete(stage_name, stage_runtime)
+
+        return StageResult(
+            rows_loaded=0,
+            runtime=stage_runtime,
+        )
+
+    metadata = download_artist_metadata(artist_ids)
+
+    rows_updated = update_artist_metadata(metadata)
+
+    stage_runtime = perf_counter() - stage_start
+    print_stage_complete(stage_name, stage_runtime)
+
+    return StageResult(
+        rows_loaded=rows_updated,
+        runtime=stage_runtime,
+    )    
+    
+    
 def run_album_art_stage():
     stage_start = perf_counter()
 
     stage_name = "Album Art"
-    print_stage_header(4, 7, stage_name)
+    print_stage_header(5, 8, stage_name)
     print("Updating album artwork...")
 
     rows_loaded = process_album_art()
@@ -299,7 +338,7 @@ def run_warehouse_stage():
     stage_start = perf_counter()
 
     stage_name = "Listening History Warehouse"
-    print_stage_header(5, 7, stage_name)
+    print_stage_header(6, 8, stage_name)
     print("Rebuilding listening history warehouse...")
 
     warehouse_df = build_warehouse_dataframe()
@@ -340,7 +379,7 @@ def run_analytics_stage():
     stage_start = perf_counter()
 
     stage_name = "Analytics"
-    print_stage_header(6, 7, stage_name)
+    print_stage_header(7, 8, stage_name)
     print("Rebuilding analytics tables...")
 
     rebuild_analytics_tables()
@@ -355,7 +394,7 @@ def run_export_stage():
     stage_start = perf_counter()
 
     stage_name = "Tableau Export"
-    print_stage_header(7, 7, stage_name)
+    print_stage_header(8, 8, stage_name)
     print("Exporting Tableau datasets...")
 
     export_tables(EXPORT_TABLES)
@@ -381,6 +420,7 @@ def main():
         liked_result = run_liked_songs_stage()
         #recent_result = run_recent_tracks_stage()
         track_metadata_result = run_track_metadata_stage()
+        artist_metadata_result = run_artist_metadata_stage()
         album_art_result = run_album_art_stage()
         warehouse_result = run_warehouse_stage()
         analytics_result = run_analytics_stage()
@@ -392,6 +432,7 @@ def main():
                 ("Liked Songs", liked_result),
                 #("Recent Tracks", recent_result),
                 ("Track Metadata", track_metadata_result),
+                ("Artist Metadata", artist_metadata_result),
                 ("Album Art", album_art_result),
                 ("Warehouse", warehouse_result),
                 ("Analytics", analytics_result),
