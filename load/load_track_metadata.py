@@ -55,20 +55,20 @@ def get_missing_track_ids():
     """
 
     query = """
-        SELECT
-            h.spotify_id
-        FROM listening_history_warehouse h
+        SELECT DISTINCT
+            SUBSTRING_INDEX(c.canonical_uri, ':', -1) AS spotify_id
+
+        FROM canonical_song_uris c
+
         LEFT JOIN track_metadata t
-            ON h.spotify_id = t.spotify_id
-        WHERE
-            h.spotify_id IS NOT NULL
-            AND t.spotify_id IS NULL
-        GROUP BY
-            h.spotify_id
-        ORDER BY
-            COUNT(*) DESC,
-            MAX(h.played_at) DESC
-            LIMIT 600;
+            ON t.spotify_id =
+            SUBSTRING_INDEX(c.canonical_uri, ':', -1)
+
+        WHERE t.spotify_id IS NULL
+
+        ORDER BY spotify_id
+
+        LIMIT 600;
     """
 
     df = fetch_dataframe(query)

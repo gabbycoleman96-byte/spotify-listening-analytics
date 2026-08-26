@@ -25,11 +25,11 @@ CREATE TABLE canonical_song_uris AS
 WITH song_versions AS (
 
     SELECT
-        spotify_id,
+        h.spotify_id,
 
         LOWER(
             REGEXP_REPLACE(
-                TRIM(track_name),
+                TRIM(h.track_name),
                 '[[:space:]]+',
                 ' '
             )
@@ -37,33 +37,42 @@ WITH song_versions AS (
 
         LOWER(
             REGEXP_REPLACE(
-                TRIM(artist_name),
+                TRIM(h.artist_name),
                 '[[:space:]]+',
                 ' '
             )
         ) AS normalized_artist_name,
 
-        MAX(is_liked) AS is_liked,
+        MAX(
+            CASE
+                WHEN l.spotify_id IS NOT NULL THEN 1
+                ELSE 0
+            END
+        ) AS is_liked,
+
         COUNT(*) AS play_count
 
-    FROM listening_history_warehouse
+    FROM listening_history_warehouse h
 
-    WHERE spotify_id IS NOT NULL
-      AND track_name IS NOT NULL
-      AND artist_name IS NOT NULL
+    LEFT JOIN liked_songs l
+        ON h.spotify_id = l.spotify_id
+
+    WHERE h.spotify_id IS NOT NULL
+      AND h.track_name IS NOT NULL
+      AND h.artist_name IS NOT NULL
 
     GROUP BY
-        spotify_id,
+        h.spotify_id,
         LOWER(
             REGEXP_REPLACE(
-                TRIM(track_name),
+                TRIM(h.track_name),
                 '[[:space:]]+',
                 ' '
             )
         ),
         LOWER(
             REGEXP_REPLACE(
-                TRIM(artist_name),
+                TRIM(h.artist_name),
                 '[[:space:]]+',
                 ' '
             )

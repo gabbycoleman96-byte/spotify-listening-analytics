@@ -29,6 +29,7 @@ Pipeline
 from dataclasses import dataclass
 from datetime import datetime, time
 from time import perf_counter
+from pathlib import Path
 
 from extract.liked_songs import download_liked_songs
 from extract.recent_tracks import download_recent_tracks
@@ -37,6 +38,7 @@ from load.database import get_latest_liked_song_date
 from load.etl_logger import log_etl_run
 from load.loader import (
     execute_sql,
+    execute_sql_file,
     load_dataframe,
 )
 
@@ -48,6 +50,7 @@ from load.load_artist_metadata import (
 
 from transform.warehouse_transform import (
     build_warehouse_dataframe,
+    rebuild_warehouse_enrichment,
 )
 
 from transform.rebuild_summary_tables import (
@@ -364,6 +367,14 @@ def run_warehouse_stage():
     warehouse_inserted = load_dataframe(
         warehouse_df,
         "listening_history_warehouse",
+    )
+    
+    print("\nNormalizing Spotify song URIs...")
+
+    execute_sql_file(
+        Path("sql")
+        / "analysis"
+        / "09_normalize_song_uris.sql"
     )
 
     stage_runtime = perf_counter() - stage_start

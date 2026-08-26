@@ -24,6 +24,10 @@ def rebuild_analytics_tables():
     sql_files = sorted(ANALYSIS_FOLDER.glob("*.sql"))
 
     for sql_file in sql_files:
+
+        if sql_file.name == "09_normalize_song_uris.sql":
+            continue
+
         print(f"  • {sql_file.name}")
         execute_sql_file(sql_file)
 

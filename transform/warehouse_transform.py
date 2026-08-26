@@ -277,8 +277,20 @@ def build_warehouse_dataframe():
 
     print(f"Removed {before - len(df):,} non-music rows .")
 
+    return df
+
+
+def rebuild_warehouse_enrichment():
+    """
+    Rebuild all enrichment columns using the already-normalized warehouse.
+    """
+
+    print("\nLoading warehouse for enrichment...")
+
+    df = read_table("listening_history_warehouse")
+
     df = enrich_warehouse(df)
-    
+
     df = add_album_longest_streak(df)
 
     return df

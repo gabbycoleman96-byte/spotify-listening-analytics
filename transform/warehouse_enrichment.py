@@ -11,7 +11,6 @@ Adds all enrichment fields to the Spotify listening warehouse.
 
 import pandas as pd
 
-from load.database import get_liked_song_ids
 from load.reader import read_query
 
 
@@ -21,9 +20,24 @@ from load.reader import read_query
 
 def add_liked_status(df):
 
-    liked_song_ids = get_liked_song_ids()
+    liked_uris = read_query("""
+        SELECT DISTINCT
+            c.canonical_uri
 
-    df["is_liked"] = df["spotify_id"].isin(liked_song_ids)
+        FROM canonical_song_uris c
+
+        JOIN liked_songs l
+            ON l.spotify_id = c.spotify_id
+    """)
+
+    liked_uri_set = set(
+        liked_uris["canonical_uri"]
+    )
+
+    df["is_liked"] = (
+        df["spotify_uri"]
+        .isin(liked_uri_set)
+    )
 
     return df
 
@@ -37,18 +51,32 @@ def add_track_metadata(df):
 
     metadata = read_query("""
         SELECT
-            tm.spotify_id,
+            tm.spotify_id AS canonical_spotify_id,
             tm.duration_ms,
             am.album_art_url
+
         FROM track_metadata tm
+
         LEFT JOIN album_metadata am
             ON tm.album_id = am.album_id
     """)
 
+    df["canonical_spotify_id"] = (
+        df["spotify_uri"]
+        .fillna("")
+        .str.split(":")
+        .str[-1]
+        .replace("", None)
+    )
+
     df = df.merge(
         metadata,
-        on="spotify_id",
+        on="canonical_spotify_id",
         how="left",
+    )
+
+    df = df.drop(
+        columns=["canonical_spotify_id"]
     )
 
     # Create placeholder columns if they don't exist yet
@@ -99,7 +127,6 @@ def add_navigation_columns(df):
     df["previous_track"] = df["track_name"].shift()
     df["previous_artist"] = df["artist_name"].shift()
     df["previous_album"] = df["album_name"].shift()
-    df["previous_spotify_id"] = df["spotify_id"].shift()
 
     df["next_track"] = df["track_name"].shift(-1)
     df["next_artist"] = df["artist_name"].shift(-1)
@@ -114,7 +141,7 @@ def add_navigation_columns(df):
     ).fillna(False)
 
     df["same_song_as_previous"] = (
-        df["spotify_id"] == df["previous_spotify_id"]
+        df["spotify_uri"] == df["spotify_uri"].shift()
     ).fillna(False)
 
     return df
@@ -248,7 +275,7 @@ def add_streaks(df):
 
     ("artist_name", "artist_streak_id", "artist_streak_length"),
     ("album_key", "album_streak_id", "album_streak_length"),
-    ("spotify_id", "song_streak_id", "song_streak_length"),
+    ("spotify_uri", "song_streak_id", "song_streak_length"),
 
     ]
 
@@ -290,7 +317,7 @@ def add_running_counts(df):
     )
 
     df["track_play_count"] = (
-        df.groupby("spotify_id")
+        df.groupby("spotify_uri")
         .cumcount()
         + 1
     )
