@@ -149,14 +149,6 @@ def download_track_metadata(track_ids):
 
                     break
 
-                    print(
-                        f"Rate limited. "
-                        f"Waiting {retry_after} seconds..."
-                    )
-
-                    time.sleep(retry_after)
-
-                    continue
 
             except Exception as e:
 

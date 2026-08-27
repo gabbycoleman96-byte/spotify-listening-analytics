@@ -53,10 +53,7 @@ WITH complete_albums AS (
 
     SELECT
         tm.album_id,
-        CONCAT(
-            'spotify:track:',
-            tm.spotify_id
-        ) AS spotify_uri,
+        am.album_name,
         am.album_art_url,
         am.total_tracks
 
@@ -85,7 +82,7 @@ WITH complete_albums AS (
                 tm.track_number
             )
         ) = am.total_tracks
-    ),
+),
 
 
 -- ============================================================
@@ -96,7 +93,11 @@ canonical_tracks AS (
 
     SELECT
         tm.album_id,
-        tm.spotify_id,
+
+        CONCAT(
+            'spotify:track:',
+            tm.spotify_id
+        ) AS spotify_uri,
 
         ROW_NUMBER() OVER (
             PARTITION BY tm.album_id
