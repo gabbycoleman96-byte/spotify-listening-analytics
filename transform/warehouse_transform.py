@@ -265,6 +265,10 @@ def build_warehouse_dataframe():
     df = add_date_dimensions(df)
 
     df = add_metadata(df)
+    
+    # raw_id belongs to the raw history table only.
+    # The warehouse uses played_at + spotify_id as its event key.
+    df = df.drop(columns=["raw_id"], errors="ignore")
 
     # Remove rows with no music metadata
     before = len(df)
