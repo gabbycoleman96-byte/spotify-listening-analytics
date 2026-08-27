@@ -73,13 +73,21 @@ def add_track_metadata(df):
         metadata,
         on="canonical_spotify_id",
         how="left",
+        suffixes=("", "_metadata"),
     )
+
+    df["duration_ms"] = df["duration_ms_metadata"]
+    df["album_art_url"] = df["album_art_url_metadata"]
 
     df = df.drop(
-        columns=["canonical_spotify_id"]
+        columns=[
+            "canonical_spotify_id",
+            "duration_ms_metadata",
+            "album_art_url_metadata",
+        ]
     )
 
-    # Create placeholder columns if they don't exist yet
+    # These enrichments are intentionally not implemented yet.
     for column in [
         "primary_genre",
         "secondary_genre",
@@ -87,9 +95,18 @@ def add_track_metadata(df):
     ]:
         if column not in df.columns:
             df[column] = None
+    
+    print(
+        f"Duration populated: "
+        f"{df['duration_ms'].notna().sum():,}"
+    )
+
+    print(
+        f"Album art populated: "
+        f"{df['album_art_url'].notna().sum():,}"
+    )
 
     return df
-
 
 # ============================================================
 # Play Numbers

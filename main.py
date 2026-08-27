@@ -408,6 +408,7 @@ def run_warehouse_enrichment_stage():
 
     stage_runtime = perf_counter() - stage_start
     print_stage_complete(stage_name, stage_runtime)
+    
 
     return StageResult(
         rows_loaded=rows_loaded,
