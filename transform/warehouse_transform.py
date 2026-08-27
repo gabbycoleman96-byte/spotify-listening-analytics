@@ -252,7 +252,7 @@ def build_warehouse_dataframe():
     df = load_raw_history()
 
     df = clean_warehouse(df)
-    
+
     dupes = df[df.duplicated(
         subset=["ts", "spotify_track_uri"],
         keep=False
@@ -265,7 +265,7 @@ def build_warehouse_dataframe():
     df = add_date_dimensions(df)
 
     df = add_metadata(df)
-    
+
     # raw_id belongs to the raw history table only.
     # The warehouse uses played_at + spotify_id as its event key.
     df = df.drop(columns=["raw_id"], errors="ignore")
@@ -279,7 +279,48 @@ def build_warehouse_dataframe():
         & df["spotify_uri"].notna()
     ].copy()
 
-    print(f"Removed {before - len(df):,} non-music rows .")
+    print(f"Removed {before - len(df):,} non-music rows.")
+
+    # ========================================================
+    # Keep only columns that belong in the warehouse
+    # ========================================================
+
+    warehouse_columns = [
+        "played_at",
+        "date",
+        "year",
+        "quarter",
+        "month_number",
+        "month_name",
+        "week",
+        "day",
+        "weekday_number",
+        "weekday_name",
+        "hour",
+        "hour_label",
+        "time",
+
+        "ms_played",
+        "shuffle_state",
+        "skipped",
+
+        "track_name",
+        "artist_name",
+        "album_name",
+        "spotify_id",
+        "spotify_uri",
+
+        "source",
+        "imported_at",
+    ]
+
+    # Only pass warehouse columns forward.
+    # Raw Spotify export fields such as platform, ip_addr,
+    # conn_country, offline, etc. stay in the raw table only.
+    df = df[
+        [column for column in warehouse_columns
+         if column in df.columns]
+    ].copy()
 
     return df
 

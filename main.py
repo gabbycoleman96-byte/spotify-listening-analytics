@@ -260,88 +260,13 @@ def run_recent_tracks_stage():
         inserted=recent_inserted,
         runtime=stage_runtime,
     )
-
-
-def run_track_metadata_stage():
-    stage_start = perf_counter()
-
-    stage_name = "Track Metadata"
-    print_stage_header(3, 9, stage_name)
-    print("Downloading metadata for new tracks...")
-
-    metadata = load_track_metadata()
-
-    stage_runtime = perf_counter() - stage_start
-    print_stage_complete(stage_name, stage_runtime)
-
-    rows_loaded = (
-        len(metadata["tracks"])
-        if isinstance(metadata, dict)
-        else len(metadata)
-    )
-
-    return StageResult(
-        rows_loaded=rows_loaded,
-        runtime=stage_runtime,
-    )
     
-    
-def run_artist_metadata_stage():
-    stage_start = perf_counter()
-
-    stage_name = "Artist Metadata"
-    print_stage_header(4, 9, stage_name)
-    print("Downloading metadata for new artists...")
-
-    artist_ids = get_missing_artist_ids()
-
-    if not artist_ids:
-        print("No new artists require metadata.")
-
-        stage_runtime = perf_counter() - stage_start
-        print_stage_complete(stage_name, stage_runtime)
-
-        return StageResult(
-            rows_loaded=0,
-            runtime=stage_runtime,
-        )
-
-    metadata = download_artist_metadata(artist_ids)
-
-    rows_updated = update_artist_metadata(metadata)
-
-    stage_runtime = perf_counter() - stage_start
-    print_stage_complete(stage_name, stage_runtime)
-
-    return StageResult(
-        rows_loaded=rows_updated,
-        runtime=stage_runtime,
-    )    
-    
-    
-def run_album_art_stage():
-    stage_start = perf_counter()
-
-    stage_name = "Album Art"
-    print_stage_header(5, 9, stage_name)
-    print("Updating album artwork...")
-
-    rows_loaded = process_album_art()
-
-    stage_runtime = perf_counter() - stage_start
-    print_stage_complete(stage_name, stage_runtime)
-
-    return StageResult(
-        rows_loaded=rows_loaded,
-        runtime=stage_runtime,
-    )
-
 
 def run_warehouse_stage():
     stage_start = perf_counter()
 
     stage_name = "Listening History Warehouse"
-    print_stage_header(6, 9, stage_name)
+    print_stage_header(3, 9, stage_name)
     print("Rebuilding listening history warehouse...")
 
     warehouse_df = build_warehouse_dataframe()
@@ -382,6 +307,81 @@ def run_warehouse_stage():
 
     return StageResult(
         rows_loaded=warehouse_inserted,
+        runtime=stage_runtime,
+    )
+
+
+def run_track_metadata_stage():
+    stage_start = perf_counter()
+
+    stage_name = "Track Metadata"
+    print_stage_header(4, 9, stage_name)
+    print("Downloading metadata for new tracks...")
+
+    metadata = load_track_metadata()
+
+    stage_runtime = perf_counter() - stage_start
+    print_stage_complete(stage_name, stage_runtime)
+
+    rows_loaded = (
+        len(metadata["tracks"])
+        if isinstance(metadata, dict)
+        else len(metadata)
+    )
+
+    return StageResult(
+        rows_loaded=rows_loaded,
+        runtime=stage_runtime,
+    )
+    
+    
+def run_artist_metadata_stage():
+    stage_start = perf_counter()
+
+    stage_name = "Artist Metadata"
+    print_stage_header(5, 9, stage_name)
+    print("Downloading metadata for new artists...")
+
+    artist_ids = get_missing_artist_ids()
+
+    if not artist_ids:
+        print("No new artists require metadata.")
+
+        stage_runtime = perf_counter() - stage_start
+        print_stage_complete(stage_name, stage_runtime)
+
+        return StageResult(
+            rows_loaded=0,
+            runtime=stage_runtime,
+        )
+
+    metadata = download_artist_metadata(artist_ids)
+
+    rows_updated = update_artist_metadata(metadata)
+
+    stage_runtime = perf_counter() - stage_start
+    print_stage_complete(stage_name, stage_runtime)
+
+    return StageResult(
+        rows_loaded=rows_updated,
+        runtime=stage_runtime,
+    )    
+    
+    
+def run_album_art_stage():
+    stage_start = perf_counter()
+
+    stage_name = "Album Art"
+    print_stage_header(6, 9, stage_name)
+    print("Updating album artwork...")
+
+    rows_loaded = process_album_art()
+
+    stage_runtime = perf_counter() - stage_start
+    print_stage_complete(stage_name, stage_runtime)
+
+    return StageResult(
+        rows_loaded=rows_loaded,
         runtime=stage_runtime,
     )
 
