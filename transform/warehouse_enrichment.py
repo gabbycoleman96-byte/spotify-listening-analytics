@@ -332,6 +332,12 @@ def add_running_counts(df):
         .cumcount()
         + 1
     )
+    
+    df["album_art_play_count"] = (
+        df.groupby("album_art_url")
+        ["album_art_url"]
+        .transform("size")
+    )
 
     df["track_play_count"] = (
         df.groupby("spotify_uri")
@@ -432,6 +438,7 @@ def reorder_columns(df):
 
         "artist_play_count",
         "album_play_count",
+        "album_art_play_count",
         "track_play_count",
     ]
 

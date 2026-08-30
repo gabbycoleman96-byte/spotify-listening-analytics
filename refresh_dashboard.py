@@ -19,6 +19,7 @@ from main import (
     run_track_metadata_stage,
     run_artist_metadata_stage,
     run_album_art_stage,
+    run_warehouse_enrichment_stage,
 )
 
 from load.loader import execute_sql_file
@@ -39,22 +40,28 @@ def refresh_dashboard():
     print("=" * 60)
 
     # ========================================================
-    # Track Metadata
-    # ========================================================
-
-    #run_track_metadata_stage()
-    
-    # ========================================================
     # Artist Metadata
     # ========================================================
     
     run_artist_metadata_stage()
 
     # ========================================================
+    # Track Metadata
+    # ========================================================
+
+    run_track_metadata_stage()
+
+    # ========================================================
     # Album Art
     # ========================================================
 
     run_album_art_stage()
+
+    # ========================================================
+    # Warehouse Enrichment
+    # ========================================================
+
+    run_warehouse_enrichment_stage()
 
     # ========================================================
     # Album Listening Sequences
