@@ -48,32 +48,37 @@ MAX_RATE_LIMIT_WAIT = 3600  # 1 hour
 # Find Missing Track IDs
 # ============================================================
 
-def get_missing_track_ids():
+def get_missing_track_uris():
     """
-    Return Spotify track IDs that exist in the warehouse
-    but not yet in track_metadata.
+    Return canonical Spotify track URIs that do not yet
+    exist in track_metadata.
     """
 
     query = """
-        SELECT DISTINCT
-            SUBSTRING_INDEX(c.canonical_uri, ':', -1) AS spotify_id
+        SELECT
+            c.canonical_uri,
+            COUNT(*) AS play_count
 
         FROM canonical_song_uris c
 
+        JOIN listening_history_warehouse h
+            ON h.spotify_id = c.spotify_id
+
         LEFT JOIN track_metadata t
-            ON t.spotify_id =
-            SUBSTRING_INDEX(c.canonical_uri, ':', -1)
+            ON t.spotify_uri = c.canonical_uri
 
         WHERE t.spotify_id IS NULL
 
-        ORDER BY spotify_id
+        GROUP BY c.canonical_uri
+
+        ORDER BY play_count DESC
 
         LIMIT 600;
     """
 
     df = fetch_dataframe(query)
 
-    return df["spotify_id"].tolist()
+    return df["canonical_uri"].tolist()
 
 
 # ============================================================
@@ -291,9 +296,9 @@ def load_track_metadata():
     dict[str, pandas.DataFrame]
     """
 
-    missing_track_ids = get_missing_track_ids()
+    missing_track_uris = get_missing_track_uris()
 
-    if not missing_track_ids:
+    if not missing_track_uris:
 
         print(
             "\nTrack metadata is already up to date."
@@ -308,12 +313,12 @@ def load_track_metadata():
 
     print(
         f"\nFound "
-        f"{len(missing_track_ids):,} "
+        f"{len(missing_track_uris):,} "
         f"tracks missing metadata."
     )
 
     metadata = download_track_metadata(
-        missing_track_ids
+        missing_track_uris
     )
 
     if metadata["tracks"].empty:

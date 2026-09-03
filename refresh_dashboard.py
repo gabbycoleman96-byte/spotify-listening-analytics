@@ -75,10 +75,11 @@ def refresh_dashboard():
     # Tableau Export
     # ========================================================
 
-    print("\nExporting album listening sequences...")
+    print("\nExporting CSVs...")
 
     export_tables([
-        "album_listening_sequences"
+        "album_listening_sequences",
+        "listening_history_warehouse"
     ])
 
     print("\n" + "=" * 60)
