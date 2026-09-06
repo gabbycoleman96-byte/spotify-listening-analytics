@@ -3,25 +3,24 @@ cleanup_liked_songs.py
 
 Purpose
 -------
-Create a safe, read-only comparison between the archived liked-song
-snapshot and the user's current Spotify Liked Songs library.
+Compare the archived liked-song snapshot against the user's
+current Spotify Liked Songs library and identify duplicate
+Spotify track versions.
 
 This utility is intentionally separate from the daily ETL.
 
-PHASE 1:
-    - Read archived liked songs from MySQL
-    - Download the current Spotify Liked Songs library
+Current phase:
+    - Load archived liked songs
+    - Download current Spotify Liked Songs
     - Compare Spotify IDs
-    - Identify records that have already been removed
+    - Enrich records with listening-history information
+    - Identify current duplicate Spotify versions
     - Create a review CSV
 
 This phase DOES NOT:
     - Remove anything from Spotify
     - Modify the database
     - Modify liked_songs
-
-The destructive cleanup step will be added only after this
-comparison has been verified.
 """
 
 # ============================================================
@@ -81,6 +80,44 @@ def load_archived_liked_songs():
 
 
 # ============================================================
+# Load warehouse enrichment
+# ============================================================
+
+def load_song_enrichment():
+    """
+    Load listening-history information used to evaluate
+    duplicate Spotify versions.
+
+    Play count is calculated from the warehouse.
+
+    Canonical information comes from canonical_song_uris.
+    """
+
+    query = """
+        SELECT
+            c.spotify_id,
+            c.canonical_uri,
+            c.version_count,
+            COALESCE(w.play_count, 0) AS play_count
+        FROM canonical_song_uris c
+
+        LEFT JOIN (
+            SELECT
+                spotify_id,
+                COUNT(*) AS play_count
+            FROM listening_history_warehouse
+            GROUP BY spotify_id
+        ) w
+            ON c.spotify_id = w.spotify_id
+    """
+
+    return pd.read_sql(
+        query,
+        engine
+    )
+
+
+# ============================================================
 # Load current Spotify library
 # ============================================================
 
@@ -89,11 +126,12 @@ def load_current_liked_songs():
     Download the user's complete current Spotify Liked Songs
     library.
 
-    stop_at=None forces the existing extractor to perform a
-    full download instead of an incremental download.
+    stop_at=None forces a full download.
     """
 
-    print("Downloading current Spotify Liked Songs...\n")
+    print(
+        "Downloading current Spotify Liked Songs...\n"
+    )
 
     return download_liked_songs(
         stop_at=None
@@ -101,23 +139,143 @@ def load_current_liked_songs():
 
 
 # ============================================================
-# Compare libraries
+# Build duplicate groups
+# ============================================================
+
+def add_duplicate_information(
+    review_df
+):
+    """
+    Identify duplicate Spotify versions among records that
+    are currently liked.
+
+    Canonical groups are used when available.
+
+    Records without canonical mappings fall back to normalized
+    track name + artist name.
+    """
+
+    # --------------------------------------------------------
+    # Create fallback normalized song key
+    # --------------------------------------------------------
+
+    review_df["normalized_track_name"] = (
+        review_df["track_name"]
+        .fillna("")
+        .str.strip()
+        .str.lower()
+        .str.replace(
+            r"\s+",
+            " ",
+            regex=True
+        )
+    )
+
+    review_df["normalized_artist_name"] = (
+        review_df["artist_name"]
+        .fillna("")
+        .str.strip()
+        .str.lower()
+        .str.replace(
+            r"\s+",
+            " ",
+            regex=True
+        )
+    )
+
+    # --------------------------------------------------------
+    # Use canonical URI when available.
+    #
+    # Otherwise use normalized track + artist.
+    # --------------------------------------------------------
+
+    review_df["duplicate_group"] = (
+        review_df["canonical_uri"]
+        .fillna(
+            "fallback:"
+            + review_df["normalized_track_name"]
+            + "|"
+            + review_df["normalized_artist_name"]
+        )
+    )
+
+    # --------------------------------------------------------
+    # Count currently liked versions in each group
+    # --------------------------------------------------------
+
+    active_mask = review_df["currently_liked"]
+
+    active_group_counts = (
+        review_df.loc[active_mask]
+        .groupby("duplicate_group")["spotify_id"]
+        .transform("nunique")
+    )
+
+    review_df["liked_version_count"] = 0
+
+    review_df.loc[
+        active_mask,
+        "liked_version_count"
+    ] = active_group_counts
+
+    # --------------------------------------------------------
+    # Determine duplicate status
+    # --------------------------------------------------------
+
+    review_df["duplicate_status"] = "NOT A DUPLICATE"
+
+    review_df.loc[
+        ~review_df["currently_liked"],
+        "duplicate_status"
+    ] = "NOT ACTIVE"
+
+    review_df.loc[
+        active_mask
+        & (review_df["liked_version_count"] > 1),
+        "duplicate_status"
+    ] = "CURRENT DUPLICATE"
+
+    # --------------------------------------------------------
+    # Clean up temporary columns
+    # --------------------------------------------------------
+
+    review_df = review_df.drop(
+        columns=[
+            "normalized_track_name",
+            "normalized_artist_name"
+        ]
+    )
+
+    return review_df
+
+
+# ============================================================
+# Build review
 # ============================================================
 
 def build_cleanup_review(
     archive_df,
-    current_df
+    current_df,
+    enrichment_df
 ):
     """
-    Compare archived Spotify IDs against the current Spotify
-    library.
+    Combine archive, live Spotify status, and warehouse
+    enrichment into the cleanup review.
     """
+
+    # --------------------------------------------------------
+    # Current Spotify IDs
+    # --------------------------------------------------------
 
     current_ids = set(
         current_df["spotify_id"]
         .dropna()
         .astype(str)
     )
+
+    # --------------------------------------------------------
+    # Start with archived records
+    # --------------------------------------------------------
 
     review_df = archive_df.copy()
 
@@ -137,8 +295,56 @@ def build_cleanup_review(
         )
     )
 
-    # Nothing gets automatically classified for removal yet.
+    # --------------------------------------------------------
+    # Add warehouse/canonical information
+    # --------------------------------------------------------
+
+    review_df = review_df.merge(
+        enrichment_df,
+        on="spotify_id",
+        how="left"
+    )
+
+    review_df["play_count"] = (
+        review_df["play_count"]
+        .fillna(0)
+        .astype(int)
+    )
+
+    review_df["liked_version_count"] = 0
+
+    # --------------------------------------------------------
+    # Identify duplicates
+    # --------------------------------------------------------
+
+    review_df = add_duplicate_information(
+        review_df
+    )
+
+    # --------------------------------------------------------
+    # Add blank action column.
+    #
+    # No recommendation yet.
+    # --------------------------------------------------------
+
     review_df["action"] = "REVIEW"
+
+    # --------------------------------------------------------
+    # Sort so duplicate groups are together.
+    # --------------------------------------------------------
+
+    review_df = review_df.sort_values(
+        by=[
+            "duplicate_status",
+            "duplicate_group",
+            "play_count"
+        ],
+        ascending=[
+            True,
+            True,
+            False
+        ]
+    )
 
     return review_df
 
@@ -169,72 +375,37 @@ def save_review(review_df):
 
 
 # ============================================================
-# Main
+# Print results
 # ============================================================
 
-def main():
+def print_results(review_df):
     """
-    Run the read-only liked-library comparison.
+    Print a summary of the duplicate investigation.
     """
 
-    print("=" * 60)
-    print("LIKED SONG CLEANUP - DRY RUN")
-    print("=" * 60)
-    print()
+    archived_count = len(review_df)
 
-    # --------------------------------------------------------
-    # Load archived snapshot
-    # --------------------------------------------------------
-
-    archive_df = load_archived_liked_songs()
-
-    print(
-        f"Archived records loaded: "
-        f"{len(archive_df):,}\n"
-    )
-
-    # --------------------------------------------------------
-    # Download current Spotify library
-    # --------------------------------------------------------
-
-    current_df = load_current_liked_songs()
-
-    print(
-        f"\nCurrent Spotify records: "
-        f"{len(current_df):,}\n"
-    )
-
-    # --------------------------------------------------------
-    # Compare
-    # --------------------------------------------------------
-
-    review_df = build_cleanup_review(
-        archive_df,
-        current_df
-    )
-
-    # --------------------------------------------------------
-    # Save
-    # --------------------------------------------------------
-
-    save_review(review_df)
-
-    # --------------------------------------------------------
-    # Results
-    # --------------------------------------------------------
-
-    archived_count = len(archive_df)
-
-    current_count = len(current_df)
-
-    still_liked_count = (
-        review_df["currently_liked"]
-        .sum()
+    still_liked_count = int(
+        review_df["currently_liked"].sum()
     )
 
     already_removed_count = (
-        ~review_df["currently_liked"]
-    ).sum()
+        archived_count
+        - still_liked_count
+    )
+
+    duplicate_rows = int(
+        (
+            review_df["duplicate_status"]
+            == "CURRENT DUPLICATE"
+        ).sum()
+    )
+
+    duplicate_groups = review_df.loc[
+        review_df["duplicate_status"]
+        == "CURRENT DUPLICATE",
+        "duplicate_group"
+    ].nunique()
 
     print("=" * 60)
     print("RESULTS")
@@ -246,18 +417,25 @@ def main():
     )
 
     print(
-        f"Current Spotify records:      "
-        f"{current_count:,}"
-    )
-
-    print(
-        f"Archived records still liked: "
+        f"Currently liked:              "
         f"{still_liked_count:,}"
     )
 
     print(
         f"Already removed:              "
         f"{already_removed_count:,}"
+    )
+
+    print()
+
+    print(
+        f"Current duplicate groups:     "
+        f"{duplicate_groups:,}"
+    )
+
+    print(
+        f"Records in duplicate groups:  "
+        f"{duplicate_rows:,}"
     )
 
     print()
@@ -277,6 +455,84 @@ def main():
     )
 
     print("=" * 60)
+
+
+# ============================================================
+# Main
+# ============================================================
+
+def main():
+    """
+    Run the read-only duplicate investigation.
+    """
+
+    print("=" * 60)
+    print("LIKED SONG CLEANUP - DUPLICATE INVESTIGATION")
+    print("=" * 60)
+    print()
+
+    # --------------------------------------------------------
+    # Load archive
+    # --------------------------------------------------------
+
+    archive_df = load_archived_liked_songs()
+
+    print(
+        f"Archived records loaded: "
+        f"{len(archive_df):,}\n"
+    )
+
+    # --------------------------------------------------------
+    # Load enrichment
+    # --------------------------------------------------------
+
+    print(
+        "Loading listening-history enrichment...\n"
+    )
+
+    enrichment_df = load_song_enrichment()
+
+    print(
+        f"Enrichment records loaded: "
+        f"{len(enrichment_df):,}\n"
+    )
+
+    # --------------------------------------------------------
+    # Download current Spotify library
+    # --------------------------------------------------------
+
+    current_df = load_current_liked_songs()
+
+    print(
+        f"\nCurrent Spotify records: "
+        f"{len(current_df):,}\n"
+    )
+
+    # --------------------------------------------------------
+    # Build review
+    # --------------------------------------------------------
+
+    review_df = build_cleanup_review(
+        archive_df,
+        current_df,
+        enrichment_df
+    )
+
+    # --------------------------------------------------------
+    # Save
+    # --------------------------------------------------------
+
+    save_review(
+        review_df
+    )
+
+    # --------------------------------------------------------
+    # Results
+    # --------------------------------------------------------
+
+    print_results(
+        review_df
+    )
 
 
 if __name__ == "__main__":

@@ -6,6 +6,12 @@
 -- Treat Spotify track IDs with the same normalized
 -- track name + artist name as versions of the same song.
 --
+-- Spotify ID identity rule:
+--   Each Spotify ID represents one track.
+--
+-- If Spotify metadata changes over time for the same Spotify ID,
+-- use the track/artist representation from its MOST RECENT play.
+--
 -- Canonical version priority:
 --   1. Liked version
 --   2. Most-played version
@@ -22,14 +28,79 @@ DROP TABLE IF EXISTS canonical_song_uris;
 
 CREATE TABLE canonical_song_uris AS
 
-WITH song_versions AS (
+WITH latest_version AS (
+
+    -- --------------------------------------------------------
+    -- Get exactly ONE metadata representation per Spotify ID.
+    --
+    -- The most recent listening event is treated as the most
+    -- current Spotify-accurate representation we have seen.
+    -- --------------------------------------------------------
 
     SELECT
-        h.spotify_id,
+        spotify_id,
+        track_name,
+        artist_name
+
+    FROM (
+
+        SELECT
+            h.spotify_id,
+            h.track_name,
+            h.artist_name,
+
+            ROW_NUMBER() OVER (
+                PARTITION BY h.spotify_id
+                ORDER BY h.played_at DESC
+            ) AS latest_rank
+
+        FROM listening_history_warehouse h
+
+        WHERE h.spotify_id IS NOT NULL
+          AND h.track_name IS NOT NULL
+          AND h.artist_name IS NOT NULL
+
+    ) latest
+
+    WHERE latest_rank = 1
+),
+
+
+play_counts AS (
+
+    -- --------------------------------------------------------
+    -- Calculate total listening history for each Spotify ID.
+    -- --------------------------------------------------------
+
+    SELECT
+        spotify_id,
+        COUNT(*) AS play_count
+
+    FROM listening_history_warehouse
+
+    WHERE spotify_id IS NOT NULL
+
+    GROUP BY
+        spotify_id
+),
+
+
+song_versions AS (
+
+    -- --------------------------------------------------------
+    -- Combine the latest representation with play counts and
+    -- current liked status.
+    --
+    -- Because latest_version contains exactly one row per
+    -- Spotify ID, each Spotify ID can now appear only once.
+    -- --------------------------------------------------------
+
+    SELECT
+        v.spotify_id,
 
         LOWER(
             REGEXP_REPLACE(
-                TRIM(h.track_name),
+                TRIM(v.track_name),
                 '[[:space:]]+',
                 ' '
             )
@@ -37,7 +108,7 @@ WITH song_versions AS (
 
         LOWER(
             REGEXP_REPLACE(
-                TRIM(h.artist_name),
+                TRIM(v.artist_name),
                 '[[:space:]]+',
                 ' '
             )
@@ -50,36 +121,29 @@ WITH song_versions AS (
             END
         ) AS is_liked,
 
-        COUNT(*) AS play_count
+        p.play_count
 
-    FROM listening_history_warehouse h
+    FROM latest_version v
+
+    JOIN play_counts p
+        ON v.spotify_id = p.spotify_id
 
     LEFT JOIN liked_songs l
-        ON h.spotify_id = l.spotify_id
-
-    WHERE h.spotify_id IS NOT NULL
-      AND h.track_name IS NOT NULL
-      AND h.artist_name IS NOT NULL
+        ON v.spotify_id = l.spotify_id
 
     GROUP BY
-        h.spotify_id,
-        LOWER(
-            REGEXP_REPLACE(
-                TRIM(h.track_name),
-                '[[:space:]]+',
-                ' '
-            )
-        ),
-        LOWER(
-            REGEXP_REPLACE(
-                TRIM(h.artist_name),
-                '[[:space:]]+',
-                ' '
-            )
-        )
+        v.spotify_id,
+        v.track_name,
+        v.artist_name,
+        p.play_count
 ),
 
+
 ranked_versions AS (
+
+    -- --------------------------------------------------------
+    -- Rank Spotify versions within each normalized song.
+    -- --------------------------------------------------------
 
     SELECT
         spotify_id,
@@ -107,6 +171,7 @@ ranked_versions AS (
 
     FROM song_versions
 )
+
 
 SELECT
     spotify_id,
@@ -157,8 +222,6 @@ WHERE w.spotify_uri <> c.canonical_uri;
 
 -- ------------------------------------------------------------
 -- 4. Verification
---
--- Expected result: 0
 -- ------------------------------------------------------------
 
 SELECT
@@ -170,3 +233,25 @@ JOIN canonical_song_uris AS c
     ON w.spotify_id = c.spotify_id
 
 WHERE w.spotify_uri <> c.canonical_uri;
+
+
+-- ------------------------------------------------------------
+-- 5. Verify Spotify IDs are unique in canonical mapping
+--
+-- Expected result: 0
+-- ------------------------------------------------------------
+
+SELECT
+    COUNT(*) AS duplicate_spotify_ids
+
+FROM (
+    SELECT
+        spotify_id
+
+    FROM canonical_song_uris
+
+    GROUP BY
+        spotify_id
+
+    HAVING COUNT(*) > 1
+) duplicates;
