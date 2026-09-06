@@ -250,6 +250,169 @@ def add_duplicate_information(
 
 
 # ============================================================
+# Build recommendations
+# ============================================================
+
+def add_recommendations(review_df):
+    """
+    Generate conservative cleanup recommendations.
+
+    This function does NOT modify Spotify or the database.
+    Recommendations are intended for human review only.
+    """
+
+    review_df["action"] = "REVIEW"
+
+    # --------------------------------------------------------
+    # Records that are no longer in the current Spotify library
+    # --------------------------------------------------------
+
+    review_df.loc[
+        ~review_df["currently_liked"],
+        "action"
+    ] = "ALREADY REMOVED"
+
+    # --------------------------------------------------------
+    # Process each currently liked duplicate group
+    # --------------------------------------------------------
+
+    active_df = review_df[
+        review_df["currently_liked"]
+        & (review_df["liked_version_count"] > 1)
+    ].copy()
+
+    for group, group_df in active_df.groupby("duplicate_group"):
+
+        # ----------------------------------------------------
+        # One version with the highest play count
+        # ----------------------------------------------------
+
+        max_play_count = group_df["play_count"].max()
+
+        min_play_count = group_df["play_count"].min()
+
+        # ----------------------------------------------------
+        # If there is a zero-play version and another version
+        # has listening history, that is a strong candidate
+        # for removal.
+        # ----------------------------------------------------
+
+        if (
+            min_play_count == 0
+            and max_play_count > 0
+        ):
+            zero_play_ids = group_df.loc[
+                group_df["play_count"] == 0,
+                "spotify_id"
+            ]
+
+            review_df.loc[
+                review_df["spotify_id"].isin(zero_play_ids),
+                "action"
+            ] = "REMOVE"
+
+            non_zero_ids = group_df.loc[
+                group_df["play_count"] > 0,
+                "spotify_id"
+            ]
+
+            review_df.loc[
+                review_df["spotify_id"].isin(non_zero_ids),
+                "action"
+            ] = "KEEP"
+
+            continue
+
+        # ----------------------------------------------------
+        # Determine whether all versions belong to the same
+        # album.
+        # ----------------------------------------------------
+
+        album_count = (
+            group_df["album_name"]
+            .fillna("")
+            .nunique()
+        )
+
+        # ----------------------------------------------------
+        # Same album:
+        #
+        # If one version has substantially more listening
+        # history than the others, recommend keeping it.
+        # ----------------------------------------------------
+
+        if album_count == 1:
+
+            sorted_group = group_df.sort_values(
+                "play_count",
+                ascending=False
+            )
+
+            top_play_count = int(
+                sorted_group.iloc[0]["play_count"]
+            )
+
+            second_play_count = int(
+                sorted_group.iloc[1]["play_count"]
+            )
+
+            # Strong difference in listening history
+            if (
+                top_play_count >= 10
+                and top_play_count >= second_play_count * 3
+            ):
+                keep_id = sorted_group.iloc[0]["spotify_id"]
+
+                review_df.loc[
+                    review_df["spotify_id"] == keep_id,
+                    "action"
+                ] = "KEEP"
+
+                remove_ids = sorted_group.iloc[1:][
+                    "spotify_id"
+                ]
+
+                review_df.loc[
+                    review_df["spotify_id"].isin(remove_ids),
+                    "action"
+                ] = "REMOVE"
+
+            else:
+                review_df.loc[
+                    review_df["spotify_id"].isin(
+                        group_df["spotify_id"]
+                    ),
+                    "action"
+                ] = "MANUAL REVIEW"
+
+        # ----------------------------------------------------
+        # Different albums/releases:
+        #
+        # Do not automatically delete based on play count.
+        # ----------------------------------------------------
+
+        else:
+            review_df.loc[
+                review_df["spotify_id"].isin(
+                    group_df["spotify_id"]
+                ),
+                "action"
+            ] = "MANUAL REVIEW"
+
+    # --------------------------------------------------------
+    # Non-duplicate currently liked songs
+    # --------------------------------------------------------
+
+    review_df.loc[
+        review_df["currently_liked"]
+        & (review_df["liked_version_count"] == 1),
+        "action"
+    ] = "KEEP"
+
+    return review_df
+
+
+# ============================================================
 # Build review
 # ============================================================
 
@@ -322,12 +485,14 @@ def build_cleanup_review(
     )
 
     # --------------------------------------------------------
-    # Add blank action column.
+    # Generate cleanup recommendations.
     #
-    # No recommendation yet.
+    # Recommendations are read-only and require human review.
     # --------------------------------------------------------
 
-    review_df["action"] = "REVIEW"
+    review_df = add_recommendations(
+        review_df
+    )
 
     # --------------------------------------------------------
     # Sort so duplicate groups are together.
