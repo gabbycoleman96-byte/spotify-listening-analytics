@@ -1,5 +1,7 @@
 """
-combine_streaming_history.py
+combine_spotify_jsons.py
+
+python -m utils.new_spotify_export.combine_spotify_jsons
 
 Author:
     Gabby Coleman

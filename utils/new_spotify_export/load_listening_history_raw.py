@@ -1,6 +1,8 @@
 """
 load_listening_history_raw.py
 
+python -m utils.new_spotify_export.load_listening_history_raw
+
 Loads the combined Spotify Extended Streaming History CSV
 into listening_history_raw.
 """
