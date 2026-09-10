@@ -1,6 +1,8 @@
 """
 cleanup_liked_songs.py
 
+python -m utils.library_cleanup.cleanup_liked_songs
+
 Purpose
 -------
 Compare the archived liked-song snapshot against the user's

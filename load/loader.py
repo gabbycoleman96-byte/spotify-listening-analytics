@@ -23,7 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from tqdm import tqdm
 
-from config.warehouse_schema import SOURCE_COLUMNS
+
 from load.database import engine
 
 

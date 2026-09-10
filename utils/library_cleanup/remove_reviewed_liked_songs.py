@@ -1,6 +1,8 @@
 """
 remove_reviewed_liked_songs.py
 
+python -m utils.library_cleanup.remove_reviewed_liked_songs
+
 Purpose
 -------
 Execute the user's manually reviewed liked-song cleanup decisions.

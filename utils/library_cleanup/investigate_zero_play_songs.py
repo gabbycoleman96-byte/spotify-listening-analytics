@@ -1,6 +1,8 @@
 """
 investigate_zero_play_songs.py
 
+python -m utils.library_cleanup.investigate_zero_play_songs
+
 One-off investigation of liked songs that currently show
 0 plays in the cleanup review.
 
