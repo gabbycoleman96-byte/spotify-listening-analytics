@@ -13,7 +13,7 @@ Run from the project root:
 
 Output:
 
-    C:/Projects/data/manual/song_identity_review.csv
+    C:/Projects/spotify-listening-analytics/data/investigative/song_identity_review.csv
 """
 
 from __future__ import annotations
@@ -36,7 +36,7 @@ from load.database import engine
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-OUTPUT_DIR = PROJECT_ROOT.parent / "data" / "manual"
+OUTPUT_DIR = PROJECT_ROOT / "data" / "investigative"
 OUTPUT_FILE = OUTPUT_DIR / "song_identity_review.csv"
 
 STRONG_DURATION_TOLERANCE_MS = 1500
@@ -120,6 +120,26 @@ def normalize_text(value) -> str:
     value = value.lower().strip()
 
     value = re.sub(r"\s+", " ", value)
+
+    return value
+
+
+def normalize_compact_title(value) -> str:
+    """
+    Create a compact comparison key for titles where punctuation or
+    spaces separate individual letters.
+
+    Examples:
+        A-O-K   -> aok
+        A O K   -> aok
+        A.O.K.  -> aok
+        aok     -> aok
+    """
+
+    value = normalize_text(value)
+
+    # Remove non-alphanumeric characters.
+    value = re.sub(r"[^a-z0-9]+", "", value)
 
     return value
 
@@ -436,6 +456,16 @@ def evaluate_candidate(
         liked_base_title == warehouse_base_title
         and bool(liked_base_title)
     )
+    
+    compact_liked_title = normalize_compact_title(liked_row["track_name"])
+    compact_warehouse_title = normalize_compact_title(
+        warehouse_row["track_name"]
+    )
+
+    compact_title_match = (
+        compact_liked_title == compact_warehouse_title
+        and bool(compact_liked_title)
+    )
 
     similarity = title_similarity(
         liked_base_title,
@@ -554,6 +584,52 @@ def evaluate_candidate(
             "shared_artists": shared_artists,
             "risky_version_difference": risky_version_difference,
         }
+    
+    # ---------------------------------------------------------------
+    # Compact title + artist overlap
+    # ---------------------------------------------------------------
+
+    if compact_title_match:
+
+        if difference is not None and duration_is_close(
+            difference,
+            STRONG_DURATION_TOLERANCE_MS,
+        ):
+
+            if risky_version_difference:
+                return {
+                    "tier": 4,
+                    "status": "REVIEW",
+                    "method": (
+                        "COMPACT TITLE + ARTIST OVERLAP + DURATION"
+                    ),
+                    "reason": (
+                        "Titles match after compact punctuation normalization, "
+                        "artist identity agrees, and duration is within the "
+                        "strong tolerance."
+                    ),
+                    "title_similarity": similarity,
+                    "duration_difference_ms": difference,
+                    "shared_artists": shared_artists,
+                    "risky_version_difference": True,
+                }
+
+            return {
+                "tier": 2,
+                "status": "STRONG MATCH",
+                "method": (
+                    "COMPACT TITLE + ARTIST OVERLAP + DURATION"
+                ),
+                "reason": (
+                    "Titles match after compact punctuation normalization, "
+                    "artist identity agrees, and duration is within the "
+                    "strong tolerance."
+                ),
+                "title_similarity": similarity,
+                "duration_difference_ms": difference,
+                "shared_artists": shared_artists,
+                "risky_version_difference": False,
+            }
 
     # ---------------------------------------------------------------
     # Tier 2: base title + artist overlap
