@@ -18,6 +18,7 @@ Output:
 
 from __future__ import annotations
 
+import csv
 import re
 import unicodedata
 from collections import defaultdict
@@ -39,23 +40,17 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_DIR = PROJECT_ROOT / "data" / "investigative"
 OUTPUT_FILE = OUTPUT_DIR / "song_identity_review.csv"
 
+OVERRIDE_FILE = (
+    PROJECT_ROOT
+    / "data"
+    / "manual"
+    / "song_identity_overrides.csv"
+)
+
 STRONG_DURATION_TOLERANCE_MS = 1500
 REVIEW_DURATION_TOLERANCE_MS = 3000
 
 FUZZY_TITLE_THRESHOLD = 0.90
-
-# Version descriptors that can safely be treated as metadata when comparing
-# song identities.
-BENIGN_VERSION_PATTERNS = [
-    r"\bremastered(?:\s+\d{4})?\b",
-    r"\bremaster(?:ed)?\b",
-    r"\boriginal version\b",
-    r"\boriginal 7[\"']?\s*version\b",
-    r"\balbum version\b",
-    r"\bre-recorded\b",
-    r"\brecorded at\b.*$",
-    r"\bfrom the motion picture\b.*$",
-]
 
 # These indicate that two Spotify records may actually be different
 # recordings. They can still produce a candidate, but the match should
@@ -72,12 +67,6 @@ RISKY_VERSION_PATTERNS = [
     r"\bcover\b",
     r"\bdemo\b",
     r"\binstrumental\b",
-]
-
-FEATURE_PATTERNS = [
-    r"\bfeat\.?\b",
-    r"\bfeaturing\b",
-    r"\bwith\b",
 ]
 
 
@@ -773,6 +762,7 @@ def build_candidate_indexes(warehouse_df):
 
     exact_index = defaultdict(list)
     base_index = defaultdict(list)
+    compact_index = defaultdict(list)
 
     for index, row in warehouse_df.iterrows():
 
@@ -782,7 +772,14 @@ def build_candidate_indexes(warehouse_df):
         if row["base_title"]:
             base_index[row["base_title"]].append(index)
 
-    return exact_index, base_index
+        compact_title = normalize_compact_title(
+            row["track_name"]
+        )
+
+        if compact_title:
+            compact_index[compact_title].append(index)
+
+    return exact_index, base_index, compact_index
 
 
 def find_candidates(
@@ -790,6 +787,7 @@ def find_candidates(
     warehouse_df,
     exact_index,
     base_index,
+    compact_index,
 ):
     """
     Generate candidate warehouse records.
@@ -802,6 +800,9 @@ def find_candidates(
 
     exact_title = liked_row["normalized_title"]
     base_title = liked_row["base_title"]
+    compact_title = normalize_compact_title(
+        liked_row["track_name"]
+    )
 
     # Exact title candidates
     for index in exact_index.get(exact_title, []):
@@ -809,6 +810,10 @@ def find_candidates(
 
     # Base title candidates
     for index in base_index.get(base_title, []):
+        candidate_indexes.add(index)
+
+    # Compact title candidates
+    for index in compact_index.get(compact_title, []):
         candidate_indexes.add(index)
 
     # If no deterministic candidates exist, use fuzzy comparison.
@@ -874,6 +879,52 @@ def choose_canonical_candidate(candidates):
     )
 
     return candidate_df.iloc[0]["spotify_id"]
+
+
+def load_identity_overrides():
+    """
+    Load manually approved song identity relationships.
+
+    Overrides are keyed by liked Spotify ID and contain the warehouse
+    Spotify IDs that have been manually approved as the same song identity.
+    """
+
+    if not OVERRIDE_FILE.exists():
+        return {}
+
+    overrides = {}
+
+    with OVERRIDE_FILE.open(
+        "r",
+        encoding="utf-8-sig",
+        newline="",
+    ) as file:
+        reader = csv.DictReader(file)
+
+        for row in reader:
+            liked_id = row["liked_spotify_id"].strip()
+
+            if not liked_id:
+                continue
+
+            approved_ids = [
+                spotify_id.strip()
+                for spotify_id in row["approved_spotify_ids"].split("|")
+                if spotify_id.strip()
+            ]
+
+            overrides[liked_id] = {
+                "decision": row["decision"].strip(),
+                "approved_spotify_ids": approved_ids,
+                "canonical_spotify_id": (
+                    row["canonical_spotify_id"].strip()
+                    if row["canonical_spotify_id"]
+                    else None
+                ),
+                "reason": row["reason"].strip(),
+            }
+
+    return overrides
 
 
 # ---------------------------------------------------------------------------
@@ -970,7 +1021,7 @@ def main():
         warehouse_df
     )
 
-    exact_index, base_index = build_candidate_indexes(
+    exact_index, base_index, compact_index = build_candidate_indexes(
         warehouse_df
     )
 
@@ -979,6 +1030,14 @@ def main():
     # ---------------------------------------------------------------
 
     print("Resolving song identities...")
+    print()
+
+    identity_overrides = load_identity_overrides()
+
+    print(
+        f"Identity overrides loaded: "
+        f"{len(identity_overrides):,}"
+    )
     print()
 
     results = []
@@ -997,7 +1056,39 @@ def main():
 
         if not exact_id_matches.empty:
 
-            warehouse_row = exact_id_matches.iloc[0]
+            exact_id_play_count = (
+                exact_id_matches["play_count"]
+                .fillna(0)
+                .sum()
+            )
+
+            exact_id_first_played = (
+                pd.to_datetime(
+                    exact_id_matches["first_played"],
+                    errors="coerce",
+                )
+                .min()
+            )
+
+            exact_id_last_played = (
+                pd.to_datetime(
+                    exact_id_matches["last_played"],
+                    errors="coerce",
+                )
+                .max()
+            )
+
+            warehouse_row = exact_id_matches.sort_values(
+                by=[
+                    "play_count",
+                    "last_played",
+                ],
+                ascending=[
+                    False,
+                    False,
+                ],
+                kind="stable",
+            ).iloc[0]
 
             results.append({
                 "liked_spotify_id": liked_id,
@@ -1012,9 +1103,9 @@ def main():
                 "warehouse_album_name": warehouse_row["album_name"],
                 "warehouse_duration_ms": warehouse_row["duration_ms"],
 
-                "warehouse_play_count": warehouse_row["play_count"],
-                "first_played": warehouse_row["first_played"],
-                "last_played": warehouse_row["last_played"],
+                "warehouse_play_count": exact_id_play_count,
+                "first_played": exact_id_first_played,
+                "last_played": exact_id_last_played,
 
                 "identity_status": "EXACT MATCH",
                 "match_method": "EXACT SPOTIFY ID",
@@ -1031,12 +1122,125 @@ def main():
                 "candidate_spotify_ids": liked_id,
 
                 "canonical_spotify_id": liked_id,
-                "canonical_play_count": warehouse_row["play_count"],
+                "canonical_play_count": exact_id_play_count,
 
                 "review_required": False,
             })
 
             continue
+        
+        # -----------------------------------------------------------
+        # Manual identity override
+        # -----------------------------------------------------------
+
+        override = identity_overrides.get(liked_id)
+
+        if (
+            override
+            and override["decision"].upper() == "APPROVE"
+        ):
+
+            approved_ids = set(
+                override["approved_spotify_ids"]
+            )
+
+            approved_candidates = warehouse_df[
+                warehouse_df["spotify_id"].isin(
+                    approved_ids
+                )
+            ].copy()
+
+            if not approved_candidates.empty:
+
+                canonical_id = (
+                    override["canonical_spotify_id"]
+                )
+
+                canonical_matches = approved_candidates[
+                    approved_candidates["spotify_id"]
+                    == canonical_id
+                ]
+
+                if canonical_matches.empty:
+                    canonical_id = choose_canonical_candidate(
+                        [
+                            {
+                                "spotify_id": row["spotify_id"],
+                                "play_count": row["play_count"],
+                                "last_played": row["last_played"],
+                            }
+                            for _, row
+                            in approved_candidates.iterrows()
+                        ]
+                    )
+
+                canonical_matches = approved_candidates[
+                    approved_candidates["spotify_id"]
+                    == canonical_id
+                ]
+
+                canonical_candidate = (
+                    canonical_matches.iloc[0]
+                )
+
+                results.append({
+                    "liked_spotify_id": liked_id,
+                    "liked_track_name": liked_row["track_name"],
+                    "liked_artist_name": liked_row["artist_name"],
+                    "liked_album_name": liked_row["album_name"],
+                    "liked_duration_ms": liked_row["duration_ms"],
+
+                    "warehouse_spotify_id": canonical_id,
+                    "warehouse_track_name": (
+                        canonical_candidate["track_name"]
+                    ),
+                    "warehouse_artist_name": (
+                        canonical_candidate["artist_name"]
+                    ),
+                    "warehouse_album_name": (
+                        canonical_candidate["album_name"]
+                    ),
+                    "warehouse_duration_ms": (
+                        canonical_candidate["duration_ms"]
+                    ),
+
+                    "warehouse_play_count": (
+                        canonical_candidate["play_count"]
+                    ),
+                    "first_played": (
+                        approved_candidates["first_played"]
+                        .min()
+                    ),
+                    "last_played": (
+                        approved_candidates["last_played"]
+                        .max()
+                    ),
+
+                    "identity_status": "APPROVED MATCH",
+                    "match_method": "MANUAL OVERRIDE",
+                    "match_reason": override["reason"],
+
+                    "title_similarity": None,
+                    "duration_difference_ms": None,
+                    "shared_artists": None,
+
+                    "candidate_count": len(
+                        approved_candidates
+                    ),
+
+                    "candidate_spotify_ids": " | ".join(
+                        sorted(approved_ids)
+                    ),
+
+                    "canonical_spotify_id": canonical_id,
+                    "canonical_play_count": (
+                        canonical_candidate["play_count"]
+                    ),
+
+                    "review_required": False,
+                })
+
+                continue
 
         # -----------------------------------------------------------
         # Find non-ID candidates
@@ -1047,6 +1251,7 @@ def main():
             warehouse_df,
             exact_index,
             base_index,
+            compact_index,
         )
 
         evaluated_candidates = []
@@ -1370,6 +1575,7 @@ def main():
 
     for status in [
         "EXACT MATCH",
+        "APPROVED MATCH",
         "STRONG MATCH",
         "REVIEW",
         "UNMATCHED",
