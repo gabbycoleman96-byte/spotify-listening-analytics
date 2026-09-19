@@ -39,47 +39,15 @@ SELECT
     CONCAT(
         'spotify:track:',
         canonical_spotify_id
-    ) AS canonical_uri
+    ) AS canonical_uri,
+
+    COUNT(*) OVER (
+        PARTITION BY canonical_spotify_id
+    ) AS version_count
 
 FROM song_identity_map
 
 WHERE canonical_spotify_id IS NOT NULL;
-
-
--- ------------------------------------------------------------
--- 2. Add version_count
---
--- version_count represents how many Spotify IDs belong to
--- each canonical identity.
--- ------------------------------------------------------------
-
-ALTER TABLE canonical_song_uris
-ADD COLUMN version_count INT NOT NULL DEFAULT 1;
-
-
-UPDATE canonical_song_uris AS c
-
-JOIN (
-    SELECT
-        canonical_spotify_id,
-        COUNT(*) AS version_count
-
-    FROM song_identity_map
-
-    WHERE canonical_spotify_id IS NOT NULL
-
-    GROUP BY
-        canonical_spotify_id
-
-) versions
-
-    ON c.canonical_uri = CONCAT(
-        'spotify:track:',
-        versions.canonical_spotify_id
-    )
-
-SET
-    c.version_count = versions.version_count;
 
 
 -- ------------------------------------------------------------
