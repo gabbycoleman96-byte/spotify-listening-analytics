@@ -1,26 +1,31 @@
 -- ============================================================
 -- 09_normalize_song_uris.sql
--- Canonicalize Spotify track URIs
+-- Build canonical Spotify URI compatibility mapping
 --
--- Option A:
--- Treat Spotify track IDs with the same normalized
--- track name + artist name as versions of the same song.
+-- The permanent song_identity_map is now the authoritative
+-- source for Spotify song identity.
 --
--- Spotify ID identity rule:
---   Each Spotify ID represents one track.
+-- This script NO LONGER determines which Spotify IDs represent
+-- the same song.
 --
--- If Spotify metadata changes over time for the same Spotify ID,
--- use the track/artist representation from its MOST RECENT play.
---
--- Canonical version priority:
---   1. Liked version
---   2. Most-played version
---   3. Lowest Spotify ID as deterministic tie-breaker
+-- Its job is to:
+--   1. Rebuild canonical_song_uris from song_identity_map.
+--   2. Preserve the existing downstream compatibility table.
+--   3. Update listening_history_warehouse.spotify_uri to the
+--      canonical URI assigned by song_identity_map.
 -- ============================================================
 
 
 -- ------------------------------------------------------------
 -- 1. Rebuild canonical song mapping
+--
+-- song_identity_map contains one row for every Spotify ID
+-- found in either liked_songs or listening_history_warehouse.
+--
+-- Each resolved Spotify ID points to its canonical Spotify ID.
+--
+-- UNMATCHED liked-only songs have NULL canonical_spotify_id
+-- and therefore do not appear in this compatibility table.
 -- ------------------------------------------------------------
 
 DROP TABLE IF EXISTS canonical_song_uris;
@@ -28,173 +33,57 @@ DROP TABLE IF EXISTS canonical_song_uris;
 
 CREATE TABLE canonical_song_uris AS
 
-WITH latest_version AS (
-
-    -- --------------------------------------------------------
-    -- Get exactly ONE metadata representation per Spotify ID.
-    --
-    -- The most recent listening event is treated as the most
-    -- current Spotify-accurate representation we have seen.
-    -- --------------------------------------------------------
-
-    SELECT
-        spotify_id,
-        track_name,
-        artist_name
-
-    FROM (
-
-        SELECT
-            h.spotify_id,
-            h.track_name,
-            h.artist_name,
-
-            ROW_NUMBER() OVER (
-                PARTITION BY h.spotify_id
-                ORDER BY h.played_at DESC
-            ) AS latest_rank
-
-        FROM listening_history_warehouse h
-
-        WHERE h.spotify_id IS NOT NULL
-          AND h.track_name IS NOT NULL
-          AND h.artist_name IS NOT NULL
-
-    ) latest
-
-    WHERE latest_rank = 1
-),
-
-
-play_counts AS (
-
-    -- --------------------------------------------------------
-    -- Calculate total listening history for each Spotify ID.
-    -- --------------------------------------------------------
-
-    SELECT
-        spotify_id,
-        COUNT(*) AS play_count
-
-    FROM listening_history_warehouse
-
-    WHERE spotify_id IS NOT NULL
-
-    GROUP BY
-        spotify_id
-),
-
-
-song_versions AS (
-
-    -- --------------------------------------------------------
-    -- Combine the latest representation with play counts and
-    -- current liked status.
-    --
-    -- Because latest_version contains exactly one row per
-    -- Spotify ID, each Spotify ID can now appear only once.
-    -- --------------------------------------------------------
-
-    SELECT
-        v.spotify_id,
-
-        LOWER(
-            REGEXP_REPLACE(
-                TRIM(v.track_name),
-                '[[:space:]]+',
-                ' '
-            )
-        ) AS normalized_track_name,
-
-        LOWER(
-            REGEXP_REPLACE(
-                TRIM(v.artist_name),
-                '[[:space:]]+',
-                ' '
-            )
-        ) AS normalized_artist_name,
-
-        MAX(
-            CASE
-                WHEN l.spotify_id IS NOT NULL THEN 1
-                ELSE 0
-            END
-        ) AS is_liked,
-
-        p.play_count
-
-    FROM latest_version v
-
-    JOIN play_counts p
-        ON v.spotify_id = p.spotify_id
-
-    LEFT JOIN liked_songs l
-        ON v.spotify_id = l.spotify_id
-
-    GROUP BY
-        v.spotify_id,
-        v.track_name,
-        v.artist_name,
-        p.play_count
-),
-
-
-ranked_versions AS (
-
-    -- --------------------------------------------------------
-    -- Rank Spotify versions within each normalized song.
-    -- --------------------------------------------------------
-
-    SELECT
-        spotify_id,
-        normalized_track_name,
-        normalized_artist_name,
-        is_liked,
-        play_count,
-
-        ROW_NUMBER() OVER (
-            PARTITION BY
-                normalized_track_name,
-                normalized_artist_name
-
-            ORDER BY
-                is_liked DESC,
-                play_count DESC,
-                spotify_id
-        ) AS canonical_rank,
-
-        COUNT(*) OVER (
-            PARTITION BY
-                normalized_track_name,
-                normalized_artist_name
-        ) AS version_count
-
-    FROM song_versions
-)
-
-
 SELECT
     spotify_id,
 
     CONCAT(
         'spotify:track:',
-        FIRST_VALUE(spotify_id) OVER (
-            PARTITION BY
-                normalized_track_name,
-                normalized_artist_name
+        canonical_spotify_id
+    ) AS canonical_uri
 
-            ORDER BY
-                canonical_rank
-        )
-    ) AS canonical_uri,
+FROM song_identity_map
 
-    version_count
-
-FROM ranked_versions;
+WHERE canonical_spotify_id IS NOT NULL;
 
 
 -- ------------------------------------------------------------
--- 2. Index canonical mapping
+-- 2. Add version_count
+--
+-- version_count represents how many Spotify IDs belong to
+-- each canonical identity.
+-- ------------------------------------------------------------
+
+ALTER TABLE canonical_song_uris
+ADD COLUMN version_count INT NOT NULL DEFAULT 1;
+
+
+UPDATE canonical_song_uris AS c
+
+JOIN (
+    SELECT
+        canonical_spotify_id,
+        COUNT(*) AS version_count
+
+    FROM song_identity_map
+
+    WHERE canonical_spotify_id IS NOT NULL
+
+    GROUP BY
+        canonical_spotify_id
+
+) versions
+
+    ON c.canonical_uri = CONCAT(
+        'spotify:track:',
+        versions.canonical_spotify_id
+    )
+
+SET
+    c.version_count = versions.version_count;
+
+
+-- ------------------------------------------------------------
+-- 3. Index canonical mapping
 --
 -- This is critical because the warehouse has ~800k rows.
 -- ------------------------------------------------------------
@@ -204,7 +93,10 @@ ADD INDEX idx_canonical_song_uris_spotify_id (spotify_id);
 
 
 -- ------------------------------------------------------------
--- 3. Update warehouse to canonical URIs
+-- 4. Update warehouse to canonical URIs
+--
+-- The identity map has already decided which Spotify ID is
+-- canonical. This simply applies that decision.
 --
 -- Only rows that actually need changing are touched.
 -- ------------------------------------------------------------
@@ -221,7 +113,9 @@ WHERE w.spotify_uri <> c.canonical_uri;
 
 
 -- ------------------------------------------------------------
--- 4. Verification
+-- 5. Verification
+--
+-- Expected result: 0
 -- ------------------------------------------------------------
 
 SELECT
@@ -236,7 +130,7 @@ WHERE w.spotify_uri <> c.canonical_uri;
 
 
 -- ------------------------------------------------------------
--- 5. Verify Spotify IDs are unique in canonical mapping
+-- 6. Verify Spotify IDs are unique in canonical mapping
 --
 -- Expected result: 0
 -- ------------------------------------------------------------
