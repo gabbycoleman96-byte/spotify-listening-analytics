@@ -469,6 +469,67 @@ def build_mapping(
                         "source_type": "LIKED_ONLY",
                     }
                 )
+                
+    # -----------------------------------------------------------------------
+    # Newly liked IDs not present in the identity investigation
+    # -----------------------------------------------------------------------
+
+    mapped_ids = {
+        row["spotify_id"]
+        for row in rows
+    }
+
+    new_liked_ids = (
+        liked_ids
+        - mapped_ids
+    )
+
+    for spotify_id in sorted(new_liked_ids):
+
+        if spotify_id in warehouse_ids:
+
+            # Newly liked song that already exists in listening history.
+            # No identity investigation was needed because the Spotify ID
+            # itself is the exact identity present in the warehouse.
+
+            rows.append(
+                {
+                    "spotify_id": spotify_id,
+                    "canonical_spotify_id": spotify_id,
+                    "resolution_status": "EXACT MATCH",
+                    "resolution_method": "EXACT SPOTIFY ID",
+                    "resolution_reason": (
+                        "Liked song was added after the identity "
+                        "investigation but the same Spotify ID already "
+                        "exists in listening history."
+                    ),
+                    "is_liked": True,
+                    "source_type": "LIKED_AND_WAREHOUSE",
+                }
+            )
+
+        else:
+
+            # Newly liked song with no listening history.
+            # There is no evidence available to resolve it to another
+            # Spotify ID, so leave it unmatched until it is played or
+            # otherwise investigated.
+
+            rows.append(
+                {
+                    "spotify_id": spotify_id,
+                    "canonical_spotify_id": None,
+                    "resolution_status": "UNMATCHED",
+                    "resolution_method": "NO INVESTIGATION",
+                    "resolution_reason": (
+                        "Liked song was added after the identity "
+                        "investigation and does not currently exist "
+                        "in listening history."
+                    ),
+                    "is_liked": True,
+                    "source_type": "LIKED_ONLY",
+                }
+            )            
 
     # -----------------------------------------------------------------------
     # Warehouse-only IDs
