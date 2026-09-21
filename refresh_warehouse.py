@@ -1,16 +1,15 @@
 """
-refresh_dashboard.py
+refresh_warehouse.py
 
-Refreshes the metadata and album analytics needed for
-the Tableau dashboard without rebuilding the listening
-history warehouse.
+Refreshes the derived warehouse data without rebuilding the
+listening-history warehouse from Spotify Extended Streaming
+History exports.
 
-Use this for normal dashboard updates when metadata
-needs to be refreshed without rebuilding the listening
-history warehouse.
+Use this for routine updates between full warehouse rebuilds.
 
-Use main.py instead when a new Spotify Extended Streaming
-History export has been received.
+Use main.py when a new Spotify Extended Streaming History
+export has been received and the warehouse structure needs
+to be rebuilt.
 """
 
 from pathlib import Path
@@ -33,10 +32,10 @@ ANALYSIS_FILE = (
 )
 
 
-def refresh_dashboard():
+def refresh_warehouse():
 
     print("\n" + "=" * 60)
-    print("Spotify Dashboard Refresh")
+    print("Spotify Warehouse Refresh")
     print("=" * 60)
 
     # ========================================================
@@ -83,9 +82,9 @@ def refresh_dashboard():
     ])
 
     print("\n" + "=" * 60)
-    print("Dashboard refresh complete.")
+    print("Warehouse refresh complete.")
     print("=" * 60)
 
 
 if __name__ == "__main__":
-    refresh_dashboard()
+    refresh_warehouse()
