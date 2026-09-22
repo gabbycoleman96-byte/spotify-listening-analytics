@@ -15,10 +15,13 @@ to be rebuilt.
 from pathlib import Path
 
 from main import (
-    run_track_metadata_stage,
+    run_liked_songs_stage,
     run_artist_metadata_stage,
+    run_track_metadata_stage,
     run_album_art_stage,
     run_warehouse_enrichment_stage,
+    run_song_identity_map_stage,
+    run_canonical_uri_stage,
 )
 
 from load.loader import execute_sql_file
@@ -39,10 +42,38 @@ def refresh_warehouse():
     print("=" * 60)
 
     # ========================================================
+    # Liked Songs
+    # ========================================================
+
+    run_liked_songs_stage()
+
+    # ========================================================
+    # Song Identity Map
+    # ========================================================
+
+    run_song_identity_map_stage()
+
+    # ========================================================
+    # Canonical URI Mapping
+    # ========================================================
+
+    run_canonical_uri_stage()
+
+    # ========================================================
     # Artist Metadata
     # ========================================================
-    
-    run_artist_metadata_stage()
+    #
+    # Temporarily disabled.
+    #
+    # Keep this stage in the architecture so artist metadata
+    # collection can be resumed later if desired.
+    #
+    # Artist metadata must run BEFORE Track Metadata when
+    # enabled so existing artists needing metadata can use
+    # the available Spotify API quota before track metadata
+    # consumes it.
+    #
+    # run_artist_metadata_stage()
 
     # ========================================================
     # Track Metadata
@@ -71,14 +102,15 @@ def refresh_warehouse():
     execute_sql_file(ANALYSIS_FILE)
 
     # ========================================================
-    # Tableau Export
+    # Data Export
     # ========================================================
 
-    print("\nExporting CSVs...")
+    print("\nExporting warehouse data...")
 
     export_tables([
+        "listening_history_warehouse",
+        "liked_songs",
         "album_listening_sequences",
-        "listening_history_warehouse"
     ])
 
     print("\n" + "=" * 60)

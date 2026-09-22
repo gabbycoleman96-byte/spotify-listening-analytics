@@ -855,72 +855,47 @@ def swap_tables(
 
 def main():
 
-    print("=" * 60)
+    print("\n" + "=" * 60)
     print("BUILD SONG IDENTITY MAP")
     print("=" * 60)
-    print()
 
     # -----------------------------------------------------------------------
     # Load accepted investigation
     # -----------------------------------------------------------------------
 
-    print(
-        "Loading accepted identity investigation..."
-    )
-
     review_df = load_review()
 
     print(
-        f"Investigation rows loaded: "
-        f"{len(review_df):,}"
+        f"Investigation rows:   {len(review_df):,}"
     )
-    print()
 
     # -----------------------------------------------------------------------
     # Load ID universe
     # -----------------------------------------------------------------------
-
-    print(
-        "Loading liked and warehouse Spotify IDs..."
-    )
 
     liked_ids, warehouse_ids = (
         load_spotify_id_sets()
     )
 
     print(
-        f"Liked Spotify IDs:     "
-        f"{len(liked_ids):,}"
+        f"Liked Spotify IDs:     {len(liked_ids):,}"
     )
 
     print(
-        f"Warehouse Spotify IDs: "
-        f"{len(warehouse_ids):,}"
+        f"Warehouse Spotify IDs: {len(warehouse_ids):,}"
     )
-
-    print()
 
     # -----------------------------------------------------------------------
     # Load play counts
     # -----------------------------------------------------------------------
 
-    print(
-        "Loading warehouse play counts..."
-    )
-
-    play_counts = (
-        load_warehouse_play_counts()
-    )
-
-    print()
+    play_counts = load_warehouse_play_counts()
 
     # -----------------------------------------------------------------------
     # Build mapping
     # -----------------------------------------------------------------------
 
-    print(
-        "Building identity components..."
-    )
+    print("\nBuilding identity map...")
 
     mapping_df = build_mapping(
         review_df,
@@ -930,47 +905,42 @@ def main():
     )
 
     print(
-        f"Identity map rows generated: "
-        f"{len(mapping_df):,}"
+        f"Identity map rows:     {len(mapping_df):,}"
     )
 
-    print()
+    # -----------------------------------------------------------------------
+    # Resolution summary
+    # -----------------------------------------------------------------------
 
-    print(
-        "Resolution status:"
-    )
+    print("\nResolution status:")
 
-    print(
-        mapping_df[
-            "resolution_status"
-        ]
+    resolution_counts = (
+        mapping_df["resolution_status"]
         .value_counts()
-        .to_string()
     )
 
-    print()
+    for status, count in resolution_counts.items():
+        print(
+            f"  {status:<20} {count:>8,}"
+        )
 
-    print(
-        "Source type:"
-    )
+    print("\nSource type:")
 
-    print(
-        mapping_df[
-            "source_type"
-        ]
+    source_counts = (
+        mapping_df["source_type"]
         .value_counts()
-        .to_string()
     )
 
-    print()
+    for source_type, count in source_counts.items():
+        print(
+            f"  {source_type:<20} {count:>8,}"
+        )
 
     # -----------------------------------------------------------------------
     # Database build
     # -----------------------------------------------------------------------
 
-    print(
-        "Creating validated build table..."
-    )
+    print("\nCreating validated build table...")
 
     with engine.begin() as connection:
 
@@ -1001,12 +971,9 @@ def main():
             connection
         )
 
-    print()
-
-    print("=" * 60)
+    print("\n" + "=" * 60)
     print("SONG IDENTITY MAP COMPLETE")
     print("=" * 60)
-    print()
 
     print(
         f"Table: {FINAL_TABLE}"
@@ -1016,15 +983,7 @@ def main():
         f"Rows:  {len(mapping_df):,}"
     )
 
-    print()
-
     print(
-        "The permanent identity map is now "
-        "available to downstream ETL and analytics."
+        "\nPermanent identity map is ready for "
+        "downstream ETL and analytics."
     )
-
-    print("=" * 60)
-
-
-if __name__ == "__main__":
-    main()

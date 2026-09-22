@@ -53,8 +53,16 @@ from transform.warehouse_transform import (
     rebuild_warehouse_enrichment,
 )
 
+from transform.build_song_identity_map import (
+    main as build_song_identity_map,
+)
+
 from transform.rebuild_summary_tables import (
     rebuild_analytics_tables,
+)
+
+from transform.apply_canonical_song_uris import (
+    apply_canonical_song_uris,
 )
 
 from export.export_csv import export_tables
@@ -121,7 +129,7 @@ def run_liked_songs_stage():
     stage_start = perf_counter()
 
     stage_name = "Liked Songs"
-    print_stage_header(1, 9, stage_name)
+    print_stage_header(1, 11, stage_name)
     print("Checking for new liked songs...")
 
     latest_liked_song = get_latest_liked_song_date()
@@ -160,7 +168,7 @@ def run_recent_tracks_stage():
     stage_start = perf_counter()
 
     stage_name = "Recent Tracks"
-    print_stage_header(2, 9, stage_name)
+    print_stage_header(2, 11, stage_name)
     print("Downloading recently played tracks...")
 
     recent_df = download_recent_tracks()
@@ -266,7 +274,7 @@ def run_warehouse_stage():
     stage_start = perf_counter()
 
     stage_name = "Listening History Warehouse"
-    print_stage_header(3, 9, stage_name)
+    print_stage_header(3, 11, stage_name)
     print("Rebuilding listening history warehouse...")
 
     warehouse_df = build_warehouse_dataframe()
@@ -293,14 +301,6 @@ def run_warehouse_stage():
         warehouse_df,
         "listening_history_warehouse",
     )
-    
-    print("\nNormalizing Spotify song URIs...")
-
-    execute_sql_file(
-        Path("sql")
-        / "analysis"
-        / "09_normalize_song_uris.sql"
-    )
 
     stage_runtime = perf_counter() - stage_start
     print_stage_complete(stage_name, stage_runtime)
@@ -311,35 +311,45 @@ def run_warehouse_stage():
     )
 
 
-def run_track_metadata_stage():
+def run_song_identity_map_stage():
     stage_start = perf_counter()
 
-    stage_name = "Track Metadata"
-    print_stage_header(4, 9, stage_name)
-    print("Downloading metadata for new tracks...")
+    stage_name = "Song Identity Map"
+    print_stage_header(4, 11, stage_name)
+    print("Rebuilding permanent Spotify song identity map...")
 
-    metadata = load_track_metadata()
+    build_song_identity_map()
 
     stage_runtime = perf_counter() - stage_start
     print_stage_complete(stage_name, stage_runtime)
 
-    rows_loaded = (
-        len(metadata["tracks"])
-        if isinstance(metadata, dict)
-        else len(metadata)
-    )
-
     return StageResult(
-        rows_loaded=rows_loaded,
         runtime=stage_runtime,
     )
-    
-    
+
+
+def run_canonical_uri_stage():
+    stage_start = perf_counter()
+
+    stage_name = "Canonical URI Mapping"
+    print_stage_header(5, 11, stage_name)
+    print("Applying canonical Spotify song identities...")
+
+    apply_canonical_song_uris()
+
+    stage_runtime = perf_counter() - stage_start
+    print_stage_complete(stage_name, stage_runtime)
+
+    return StageResult(
+        runtime=stage_runtime,
+    )
+
+
 def run_artist_metadata_stage():
     stage_start = perf_counter()
 
     stage_name = "Artist Metadata"
-    print_stage_header(5, 9, stage_name)
+    print_stage_header(6, 11, stage_name)
     print("Downloading metadata for new artists...")
 
     artist_ids = get_missing_artist_ids()
@@ -368,11 +378,35 @@ def run_artist_metadata_stage():
     )    
     
     
+def run_track_metadata_stage():
+    stage_start = perf_counter()
+
+    stage_name = "Track Metadata"
+    print_stage_header(7, 11, stage_name)
+    print("Downloading metadata for new tracks...")
+
+    metadata = load_track_metadata()
+
+    stage_runtime = perf_counter() - stage_start
+    print_stage_complete(stage_name, stage_runtime)
+
+    rows_loaded = (
+        len(metadata["tracks"])
+        if isinstance(metadata, dict)
+        else len(metadata)
+    )
+
+    return StageResult(
+        rows_loaded=rows_loaded,
+        runtime=stage_runtime,
+    )
+    
+    
 def run_album_art_stage():
     stage_start = perf_counter()
 
     stage_name = "Album Art"
-    print_stage_header(6, 9, stage_name)
+    print_stage_header(8, 11, stage_name)
     print("Updating album artwork...")
 
     rows_loaded = process_album_art()
@@ -390,7 +424,7 @@ def run_warehouse_enrichment_stage():
     stage_start = perf_counter()
 
     stage_name = "Warehouse Enrichment"
-    print_stage_header(7, 9, stage_name)
+    print_stage_header(9, 11, stage_name)
     print("Rebuilding warehouse enrichment...")
 
     enriched_df = rebuild_warehouse_enrichment()
@@ -420,7 +454,7 @@ def run_analytics_stage():
     stage_start = perf_counter()
 
     stage_name = "Analytics"
-    print_stage_header(8, 9, stage_name)
+    print_stage_header(10, 11, stage_name)
     print("Rebuilding analytics tables...")
 
     rebuild_analytics_tables()
@@ -435,7 +469,7 @@ def run_export_stage():
     stage_start = perf_counter()
 
     stage_name = "Tableau Export"
-    print_stage_header(9, 9, stage_name)
+    print_stage_header(11, 11, stage_name)
     print("Exporting Tableau datasets...")
 
     export_tables(EXPORT_TABLES)
@@ -461,8 +495,10 @@ def main():
         liked_result = run_liked_songs_stage()
         #recent_result = run_recent_tracks_stage()
         warehouse_result = run_warehouse_stage()
-        track_metadata_result = run_track_metadata_stage()
+        identity_map_result = run_song_identity_map_stage()
+        canonical_uri_result = run_canonical_uri_stage()
         artist_metadata_result = run_artist_metadata_stage()
+        track_metadata_result = run_track_metadata_stage()
         album_art_result = run_album_art_stage()
         warehouse_enrichment_result = run_warehouse_enrichment_stage()
         analytics_result = run_analytics_stage()
@@ -474,8 +510,10 @@ def main():
                 ("Liked Songs", liked_result),
                 #("Recent Tracks", recent_result),
                 ("Warehouse", warehouse_result),
-                ("Track Metadata", track_metadata_result),
+                ("Song Identity Map", identity_map_result),
+                ("Canonical URI", canonical_uri_result),
                 ("Artist Metadata", artist_metadata_result),
+                ("Track Metadata", track_metadata_result),
                 ("Album Art", album_art_result),
                 ("Warehouse Enrichment", warehouse_enrichment_result),
                 ("Analytics", analytics_result),
