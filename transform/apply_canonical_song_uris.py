@@ -25,7 +25,7 @@ from tqdm import tqdm
 from load.database import engine
 
 
-BATCH_SIZE = 5_000
+BATCH_SIZE = 20
 
 
 def rebuild_canonical_song_uris():
@@ -103,6 +103,9 @@ def update_warehouse_in_batches(
 
     updated_total = 0
 
+    last_played_at = None
+    last_spotify_id = None
+
     with tqdm(
         total=total_mismatches,
         desc="Canonical URI mapping",
@@ -112,28 +115,120 @@ def update_warehouse_in_batches(
 
         while True:
 
+            # ------------------------------------------------------------
+            # Find the next batch of mismatched warehouse rows.
+            #
+            # The warehouse primary key is:
+            #     (played_at, spotify_id)
+            #
+            # Using that key lets us paginate deterministically without
+            # relying on MySQL's unsupported UPDATE ... LIMIT syntax.
+            # ------------------------------------------------------------
+
+            with engine.connect() as connection:
+
+                if last_played_at is None:
+
+                    result = connection.execute(
+                        text(
+                            """
+                            SELECT
+                                w.played_at,
+                                w.spotify_id
+                            FROM listening_history_warehouse AS w
+                            JOIN canonical_song_uris AS c
+                                ON w.spotify_id = c.spotify_id
+                            WHERE w.spotify_uri <> c.canonical_uri
+                            ORDER BY
+                                w.played_at,
+                                w.spotify_id
+                            LIMIT :batch_size
+                            """
+                        ),
+                        {
+                            "batch_size": BATCH_SIZE,
+                        },
+                    )
+
+                else:
+
+                    result = connection.execute(
+                        text(
+                            """
+                            SELECT
+                                w.played_at,
+                                w.spotify_id
+                            FROM listening_history_warehouse AS w
+                            JOIN canonical_song_uris AS c
+                                ON w.spotify_id = c.spotify_id
+                            WHERE w.spotify_uri <> c.canonical_uri
+                              AND (
+                                  w.played_at > :last_played_at
+                                  OR (
+                                      w.played_at = :last_played_at
+                                      AND w.spotify_id > :last_spotify_id
+                                  )
+                              )
+                            ORDER BY
+                                w.played_at,
+                                w.spotify_id
+                            LIMIT :batch_size
+                            """
+                        ),
+                        {
+                            "last_played_at": last_played_at,
+                            "last_spotify_id": last_spotify_id,
+                            "batch_size": BATCH_SIZE,
+                        },
+                    )
+
+                batch = result.fetchall()
+
+            if not batch:
+                break
+
+            batch_last_played_at = batch[-1][0]
+            batch_last_spotify_id = batch[-1][1]
+
+            # ------------------------------------------------------------
+            # Apply this batch.
+            #
+            # There is no LIMIT here. The primary-key boundary identifies
+            # exactly the batch we just selected.
+            # ------------------------------------------------------------
+
             with engine.begin() as connection:
 
                 result = connection.execute(
                     text(
-                        f"""
+                        """
                         UPDATE listening_history_warehouse AS w
                         JOIN canonical_song_uris AS c
                             ON w.spotify_id = c.spotify_id
                         SET w.spotify_uri = c.canonical_uri
                         WHERE w.spotify_uri <> c.canonical_uri
-                        LIMIT {BATCH_SIZE}
+                          AND (
+                              w.played_at < :batch_last_played_at
+                              OR (
+                                  w.played_at = :batch_last_played_at
+                                  AND w.spotify_id <= :batch_last_spotify_id
+                              )
+                          )
                         """
-                    )
+                    ),
+                    {
+                        "batch_last_played_at": batch_last_played_at,
+                        "batch_last_spotify_id": batch_last_spotify_id,
+                    },
                 )
 
                 updated = result.rowcount or 0
 
-            if updated == 0:
-                break
-
             updated_total += updated
             progress.update(updated)
+
+            last_played_at = batch_last_played_at
+            last_spotify_id = batch_last_spotify_id
 
     if updated_total != total_mismatches:
         raise RuntimeError(
