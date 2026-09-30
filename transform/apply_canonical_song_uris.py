@@ -25,7 +25,7 @@ from tqdm import tqdm
 from load.database import engine
 
 
-BATCH_SIZE = 20
+BATCH_SIZE = 500
 
 
 def rebuild_canonical_song_uris():
