@@ -972,7 +972,13 @@ def main():
             l.duration_ms,
             t.isrc
         FROM liked_songs AS l
-        LEFT JOIN track_metadata AS t
+        LEFT JOIN (
+            SELECT
+                spotify_id,
+                MAX(isrc) AS isrc
+            FROM track_metadata
+            GROUP BY spotify_id
+        ) AS t
             ON l.spotify_id = t.spotify_id
         WHERE l.spotify_id IS NOT NULL
         """
@@ -1005,7 +1011,13 @@ def main():
             MIN(w.played_at) AS first_played,
             MAX(w.played_at) AS last_played
         FROM listening_history_warehouse AS w
-        LEFT JOIN track_metadata AS t
+        LEFT JOIN (
+            SELECT
+                spotify_id,
+                MAX(isrc) AS isrc
+            FROM track_metadata
+            GROUP BY spotify_id
+        ) AS t
             ON w.spotify_id = t.spotify_id
         WHERE w.spotify_id IS NOT NULL
         GROUP BY
