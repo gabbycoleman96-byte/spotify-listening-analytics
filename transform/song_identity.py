@@ -760,11 +760,15 @@ def prepare_dataframe(df: pd.DataFrame) -> pd.DataFrame:
 def build_candidate_indexes(warehouse_df):
     """Build title indexes for efficient candidate lookup."""
 
+    isrc_index = defaultdict(list)
     exact_index = defaultdict(list)
     base_index = defaultdict(list)
     compact_index = defaultdict(list)
 
     for index, row in warehouse_df.iterrows():
+        
+        if pd.notna(row["isrc"]) and str(row["isrc"]).strip():
+            isrc_index[str(row["isrc"]).strip()].append(index)
 
         if row["normalized_title"]:
             exact_index[row["normalized_title"]].append(index)
@@ -779,12 +783,13 @@ def build_candidate_indexes(warehouse_df):
         if compact_title:
             compact_index[compact_title].append(index)
 
-    return exact_index, base_index, compact_index
+    return isrc_index, exact_index, base_index, compact_index
 
 
 def find_candidates(
     liked_row,
     warehouse_df,
+    isrc_index,
     exact_index,
     base_index,
     compact_index,
@@ -797,6 +802,14 @@ def find_candidates(
     """
 
     candidate_indexes = set()
+
+    # ISRC candidates
+    if pd.notna(liked_row["isrc"]) and str(liked_row["isrc"]).strip():
+        for index in isrc_index.get(
+            str(liked_row["isrc"]).strip(),
+            [],
+        ):
+            candidate_indexes.add(index)
 
     exact_title = liked_row["normalized_title"]
     base_title = liked_row["base_title"]
@@ -950,15 +963,18 @@ def main():
     liked_query = text(
         """
         SELECT
-            spotify_id,
-            track_name,
-            artist_name,
-            album_name,
-            release_date,
-            added_to_library,
-            duration_ms
-        FROM liked_songs
-        WHERE spotify_id IS NOT NULL
+            l.spotify_id,
+            l.track_name,
+            l.artist_name,
+            l.album_name,
+            l.release_date,
+            l.added_to_library,
+            l.duration_ms,
+            t.isrc
+        FROM liked_songs AS l
+        LEFT JOIN track_metadata AS t
+            ON l.spotify_id = t.spotify_id
+        WHERE l.spotify_id IS NOT NULL
         """
     )
 
@@ -979,22 +995,26 @@ def main():
     warehouse_query = text(
         """
         SELECT
-            spotify_id,
-            track_name,
-            artist_name,
-            album_name,
-            duration_ms,
+            w.spotify_id,
+            w.track_name,
+            w.artist_name,
+            w.album_name,
+            w.duration_ms,
+            t.isrc,
             COUNT(*) AS play_count,
-            MIN(played_at) AS first_played,
-            MAX(played_at) AS last_played
-        FROM listening_history_warehouse
-        WHERE spotify_id IS NOT NULL
+            MIN(w.played_at) AS first_played,
+            MAX(w.played_at) AS last_played
+        FROM listening_history_warehouse AS w
+        LEFT JOIN track_metadata AS t
+            ON w.spotify_id = t.spotify_id
+        WHERE w.spotify_id IS NOT NULL
         GROUP BY
-            spotify_id,
-            track_name,
-            artist_name,
-            album_name,
-            duration_ms
+            w.spotify_id,
+            w.track_name,
+            w.artist_name,
+            w.album_name,
+            w.duration_ms,
+            t.isrc
         """
     )
 
@@ -1021,7 +1041,12 @@ def main():
         warehouse_df
     )
 
-    exact_index, base_index, compact_index = build_candidate_indexes(
+    (
+        isrc_index,
+        exact_index,
+        base_index,
+        compact_index,
+    ) = build_candidate_indexes(
         warehouse_df
     )
 
@@ -1241,6 +1266,86 @@ def main():
                 })
 
                 continue
+            
+        
+        # -----------------------------------------------------------
+        # ISRC identity match
+        # -----------------------------------------------------------
+
+        if (
+            pd.notna(liked_row["isrc"])
+            and str(liked_row["isrc"]).strip()
+        ):
+
+            isrc_candidates = warehouse_df[
+                warehouse_df["isrc"].eq(
+                    liked_row["isrc"]
+                )
+            ].copy()
+
+            if not isrc_candidates.empty:
+
+                canonical_id = choose_canonical_candidate(
+                    [
+                        {
+                            "spotify_id": row["spotify_id"],
+                            "play_count": row["play_count"],
+                            "last_played": row["last_played"],
+                        }
+                        for _, row in isrc_candidates.iterrows()
+                    ]
+                )
+
+                canonical_candidate = isrc_candidates[
+                    isrc_candidates["spotify_id"]
+                    == canonical_id
+                ].iloc[0]
+
+                results.append({
+                    "liked_spotify_id": liked_id,
+                    "liked_track_name": liked_row["track_name"],
+                    "liked_artist_name": liked_row["artist_name"],
+                    "liked_album_name": liked_row["album_name"],
+                    "liked_duration_ms": liked_row["duration_ms"],
+
+                    "warehouse_spotify_id": canonical_id,
+                    "warehouse_track_name": canonical_candidate["track_name"],
+                    "warehouse_artist_name": canonical_candidate["artist_name"],
+                    "warehouse_album_name": canonical_candidate["album_name"],
+                    "warehouse_duration_ms": canonical_candidate["duration_ms"],
+
+                    "warehouse_play_count": canonical_candidate["play_count"],
+                    "first_played": isrc_candidates["first_played"].min(),
+                    "last_played": isrc_candidates["last_played"].max(),
+
+                    "identity_status": "ISRC MATCH",
+                    "match_method": "ISRC",
+                    "match_reason": (
+                        "Spotify records share the same ISRC, "
+                        "identifying the same underlying recording. "
+                        "Canonical version selected by listening history."
+                    ),
+
+                    "title_similarity": None,
+                    "duration_difference_ms": None,
+                    "shared_artists": None,
+
+                    "candidate_count": len(isrc_candidates),
+
+                    "candidate_spotify_ids": " | ".join(
+                        sorted(
+                            isrc_candidates["spotify_id"]
+                            .astype(str)
+                        )
+                    ),
+
+                    "canonical_spotify_id": canonical_id,
+                    "canonical_play_count": canonical_candidate["play_count"],
+
+                    "review_required": False,
+                })
+
+                continue
 
         # -----------------------------------------------------------
         # Find non-ID candidates
@@ -1249,6 +1354,7 @@ def main():
         candidate_indexes = find_candidates(
             liked_row,
             warehouse_df,
+            isrc_index,
             exact_index,
             base_index,
             compact_index,
