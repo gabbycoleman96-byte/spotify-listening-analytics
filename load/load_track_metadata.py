@@ -50,31 +50,48 @@ MAX_RATE_LIMIT_WAIT = 3600  # 1 hour
 
 
 
+
 def get_missing_track_ids():
     """
-    Return original Spotify track IDs in listening history
-    that do not yet have their own metadata rows.
+    Return Spotify track IDs from listening history and liked songs
+    that do not yet exist in track_metadata.
     """
 
     query = """
         SELECT
-            w.spotify_id,
-            COUNT(*) AS play_count
+            ids.spotify_id,
+            COALESCE(plays.play_count, 0) AS play_count
 
-        FROM listening_history_warehouse AS w
+        FROM (
+            SELECT spotify_id
+            FROM listening_history_warehouse
+            WHERE spotify_id IS NOT NULL
+
+            UNION
+
+            SELECT spotify_id
+            FROM liked_songs
+            WHERE spotify_id IS NOT NULL
+        ) AS ids
+
+        LEFT JOIN (
+            SELECT
+                spotify_id,
+                COUNT(*) AS play_count
+            FROM listening_history_warehouse
+            WHERE spotify_id IS NOT NULL
+            GROUP BY spotify_id
+        ) AS plays
+            ON plays.spotify_id = ids.spotify_id
 
         LEFT JOIN track_metadata AS tm
-            ON tm.spotify_id = w.spotify_id
+            ON tm.spotify_id = ids.spotify_id
 
-        WHERE
-            w.spotify_id IS NOT NULL
-            AND tm.spotify_id IS NULL
-
-        GROUP BY w.spotify_id
+        WHERE tm.spotify_id IS NULL
 
         ORDER BY
             play_count DESC,
-            w.spotify_id
+            ids.spotify_id
 
         LIMIT 600;
     """
@@ -82,6 +99,7 @@ def get_missing_track_ids():
     df = fetch_dataframe(query)
 
     return df["spotify_id"].tolist()
+
 
 
 
