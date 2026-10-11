@@ -206,13 +206,13 @@ def load_warehouse_play_counts() -> dict[str, int]:
 
 
 def load_isrc_groups() -> list[set[str]]:
-    """Load warehouse Spotify IDs that share a nonblank ISRC."""
+    """Load warehouse Spotify IDs that share a normalized ISRC."""
 
     isrc_df = pd.read_sql(
         text(
             """
             SELECT
-                t.isrc,
+                UPPER(TRIM(t.isrc)) AS isrc,
                 t.spotify_id
             FROM track_metadata AS t
             JOIN listening_history_warehouse AS w
@@ -220,19 +220,27 @@ def load_isrc_groups() -> list[set[str]]:
             WHERE t.isrc IS NOT NULL
               AND TRIM(t.isrc) <> ''
             GROUP BY
-                t.isrc,
+                UPPER(TRIM(t.isrc)),
                 t.spotify_id
             """
         ),
         engine,
     )
 
-    isrc_df["isrc"] = isrc_df["isrc"].astype(str).str.strip()
-    isrc_df["spotify_id"] = isrc_df["spotify_id"].astype(str)
+    isrc_df["isrc"] = (
+        isrc_df["isrc"]
+        .astype(str)
+        .str.strip()
+        .str.upper()
+    )
+
+    isrc_df["spotify_id"] = (
+        isrc_df["spotify_id"].astype(str).str.strip()
+    )
 
     groups = []
 
-    for isrc, group in isrc_df.groupby("isrc"):
+    for _, group in isrc_df.groupby("isrc"):
         spotify_ids = set(group["spotify_id"])
 
         if len(spotify_ids) > 1:
@@ -354,6 +362,17 @@ def build_mapping(
         review_df,
         isrc_groups,
     )
+    
+    isrc_ids = {
+        spotify_id
+        for group in isrc_groups
+        for spotify_id in group
+    }
+
+    isrc_component_roots = {
+        dsu.find(spotify_id)
+        for spotify_id in isrc_ids
+    }
 
     canonical_by_component = defaultdict(set)
     status_by_component = defaultdict(set)
@@ -435,41 +454,48 @@ def build_mapping(
                 ]
             )
 
-            if "APPROVED MATCH" in statuses:
+            if component in isrc_component_roots:
 
-                resolution_status = (
-                    "APPROVED MATCH"
-                )
+                resolution_status = "ISRC MATCH"
+
+            elif "APPROVED MATCH" in statuses:
+
+                resolution_status = "APPROVED MATCH"
 
             elif "STRONG MATCH" in statuses:
 
-                resolution_status = (
-                    "STRONG MATCH"
-                )
+                resolution_status = "STRONG MATCH"
 
             else:
 
-                resolution_status = (
-                    "EXACT MATCH"
-                )
+                resolution_status = "EXACT MATCH"
 
-            methods = sorted(
-                method_by_component[
-                    component
-                ]
+            methods = set(
+                method_by_component[component]
             )
 
-            resolution_method = (
-                " | ".join(methods)
+            if component in isrc_component_roots:
+                methods.add("ISRC")
+
+            resolution_method = " | ".join(
+                sorted(methods)
             )
 
             resolution_reason = (
-                "Accepted identity group from "
-                "song identity investigation. "
-                f"Canonical Spotify ID selected "
-                f"by listening history: "
-                f"{canonical_id}."
-            )
+                    "Spotify IDs connected by a shared ISRC, "
+                    "which takes priority in the identity hierarchy. "
+                    f"Canonical Spotify ID selected by listening "
+                    f"history: {canonical_id}."
+                )
+
+        else:
+
+            resolution_reason = (
+                    "Accepted identity group from "
+                    "song identity investigation. "
+                    f"Canonical Spotify ID selected "
+                    f"by listening history: {canonical_id}."
+                )
 
             for spotify_id in spotify_ids:
 
