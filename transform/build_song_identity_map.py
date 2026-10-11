@@ -203,11 +203,50 @@ def load_warehouse_play_counts() -> dict[str, int]:
     }
 
 
+def load_isrc_groups() -> list[set[str]]:
+    """Load warehouse Spotify IDs that share a nonblank ISRC."""
+
+    isrc_df = pd.read_sql(
+        text(
+            """
+            SELECT
+                t.isrc,
+                t.spotify_id
+            FROM track_metadata AS t
+            JOIN listening_history_warehouse AS w
+                ON w.spotify_id = t.spotify_id
+            WHERE t.isrc IS NOT NULL
+              AND TRIM(t.isrc) <> ''
+            GROUP BY
+                t.isrc,
+                t.spotify_id
+            """
+        ),
+        engine,
+    )
+
+    isrc_df["isrc"] = isrc_df["isrc"].astype(str).str.strip()
+    isrc_df["spotify_id"] = isrc_df["spotify_id"].astype(str)
+
+    groups = []
+
+    for isrc, group in isrc_df.groupby("isrc"):
+        spotify_ids = set(group["spotify_id"])
+
+        if len(spotify_ids) > 1:
+            groups.append(spotify_ids)
+
+    return groups
+
+
 # ---------------------------------------------------------------------------
 # Identity components
 # ---------------------------------------------------------------------------
 
-def build_components(review_df: pd.DataFrame):
+def build_components(
+    review_df: pd.DataFrame,
+    isrc_groups: list[set[str]],
+):
     """
     Build connected identity groups from accepted investigation results.
 
@@ -252,6 +291,17 @@ def build_components(review_df: pd.DataFrame):
                 candidate_id,
             )
 
+
+    # ISRC is the highest-priority identity evidence.
+    # Connect all warehouse Spotify IDs sharing an ISRC.
+    for spotify_ids in isrc_groups:
+        spotify_ids = sorted(spotify_ids)
+
+        first_id = spotify_ids[0]
+
+        for spotify_id in spotify_ids[1:]:
+            dsu.union(first_id, spotify_id)
+
     components = defaultdict(set)
 
     for spotify_id in dsu.parent:
@@ -295,10 +345,12 @@ def build_mapping(
     liked_ids: set[str],
     warehouse_ids: set[str],
     play_counts: dict[str, int],
+    isrc_groups: list[set[str]],
 ) -> pd.DataFrame:
 
     components, dsu = build_components(
-        review_df
+        review_df,
+        isrc_groups,
     )
 
     canonical_by_component = defaultdict(set)
@@ -352,14 +404,21 @@ def build_mapping(
 
     for component, spotify_ids in components.items():
 
+        
+        # Prefer warehouse IDs as canonical candidates. This allows
+        # ISRC-only groups, including warehouse-only groups, to resolve.
+        warehouse_candidates = spotify_ids.intersection(
+            warehouse_ids
+        )
+
         canonical_candidates = (
-            canonical_by_component.get(
-                component,
-                set(),
-            )
+            warehouse_candidates
+            if warehouse_candidates
+            else canonical_by_component.get(component, set())
         )
 
         if canonical_candidates:
+
 
             canonical_id = (
                 choose_component_canonical(
@@ -897,11 +956,18 @@ def main():
 
     print("\nBuilding identity map...")
 
+    isrc_groups = load_isrc_groups()
+
+    print(
+        f"Shared-ISRC groups:   {len(isrc_groups):,}"
+    )
+
     mapping_df = build_mapping(
         review_df,
         liked_ids,
         warehouse_ids,
         play_counts,
+        isrc_groups,
     )
 
     print(
