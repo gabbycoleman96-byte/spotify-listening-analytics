@@ -48,37 +48,42 @@ MAX_RATE_LIMIT_WAIT = 3600  # 1 hour
 # Find Missing Track IDs
 # ============================================================
 
-def get_missing_track_uris():
+
+
+def get_missing_track_ids():
     """
-    Return canonical Spotify track URIs that do not yet
-    exist in track_metadata.
+    Return original Spotify track IDs in listening history
+    that do not yet have their own metadata rows.
     """
 
     query = """
         SELECT
-            c.canonical_uri,
+            w.spotify_id,
             COUNT(*) AS play_count
 
-        FROM canonical_song_uris c
+        FROM listening_history_warehouse AS w
 
-        JOIN listening_history_warehouse h
-            ON h.spotify_id = c.spotify_id
+        LEFT JOIN track_metadata AS tm
+            ON tm.spotify_id = w.spotify_id
 
-        LEFT JOIN track_metadata t
-            ON t.spotify_uri = c.canonical_uri
+        WHERE
+            w.spotify_id IS NOT NULL
+            AND tm.spotify_id IS NULL
 
-        WHERE t.spotify_id IS NULL
+        GROUP BY w.spotify_id
 
-        GROUP BY c.canonical_uri
-
-        ORDER BY play_count DESC
+        ORDER BY
+            play_count DESC,
+            w.spotify_id
 
         LIMIT 600;
     """
 
     df = fetch_dataframe(query)
 
-    return df["canonical_uri"].tolist()
+    return df["spotify_id"].tolist()
+
+
 
 
 # ============================================================
@@ -296,9 +301,9 @@ def load_track_metadata():
     dict[str, pandas.DataFrame]
     """
 
-    missing_track_uris = get_missing_track_uris()
+    missing_track_ids = get_missing_track_ids()
 
-    if not missing_track_uris:
+    if not missing_track_ids:
 
         print(
             "\nTrack metadata is already up to date."
@@ -313,12 +318,12 @@ def load_track_metadata():
 
     print(
         f"\nFound "
-        f"{len(missing_track_uris):,} "
+        f"{len(missing_track_ids):,} "
         f"tracks missing metadata."
     )
 
     metadata = download_track_metadata(
-        missing_track_uris
+        missing_track_ids
     )
 
     if metadata["tracks"].empty:
