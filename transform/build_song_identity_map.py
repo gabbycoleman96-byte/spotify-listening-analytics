@@ -438,86 +438,56 @@ def build_mapping(
             else canonical_by_component.get(component, set())
         )
 
+
         if canonical_candidates:
-
-
-            canonical_id = (
-                choose_component_canonical(
-                    canonical_candidates,
-                    play_counts,
-                )
+            canonical_id = choose_component_canonical(
+                canonical_candidates,
+                play_counts,
             )
 
-            statuses = (
-                status_by_component[
-                    component
-                ]
-            )
+            statuses = status_by_component[component]
 
             if component in isrc_component_roots:
-
                 resolution_status = "ISRC MATCH"
-
             elif "APPROVED MATCH" in statuses:
-
                 resolution_status = "APPROVED MATCH"
-
             elif "STRONG MATCH" in statuses:
-
                 resolution_status = "STRONG MATCH"
-
             else:
-
                 resolution_status = "EXACT MATCH"
 
-            methods = set(
-                method_by_component[component]
-            )
+            methods = set(method_by_component[component])
 
             if component in isrc_component_roots:
                 methods.add("ISRC")
 
-            resolution_method = " | ".join(
-                sorted(methods)
-            )
+            resolution_method = " | ".join(sorted(methods))
 
-            resolution_reason = (
+            if component in isrc_component_roots:
+                resolution_reason = (
                     "Spotify IDs connected by a shared ISRC, "
                     "which takes priority in the identity hierarchy. "
                     f"Canonical Spotify ID selected by listening "
                     f"history: {canonical_id}."
                 )
-
-        else:
-
-            resolution_reason = (
+            else:
+                resolution_reason = (
                     "Accepted identity group from "
                     "song identity investigation. "
-                    f"Canonical Spotify ID selected "
-                    f"by listening history: {canonical_id}."
+                    f"Canonical Spotify ID selected by listening "
+                    f"history: {canonical_id}."
                 )
 
             for spotify_id in spotify_ids:
-
                 if (
                     spotify_id in liked_ids
                     and spotify_id in warehouse_ids
                 ):
-                    source_type = (
-                        "LIKED_AND_WAREHOUSE"
-                    )
-
+                    source_type = "LIKED_AND_WAREHOUSE"
                 elif spotify_id in liked_ids:
-
-                    source_type = (
-                        "LIKED_ONLY"
-                    )
-
+                    source_type = "LIKED_ONLY"
                 else:
-
-                    source_type = (
-                        "WAREHOUSE_ONLY"
-                    )
+                    source_type = "WAREHOUSE_ONLY"
 
                 rows.append(
                     {
@@ -526,18 +496,14 @@ def build_mapping(
                         "resolution_status": resolution_status,
                         "resolution_method": resolution_method,
                         "resolution_reason": resolution_reason,
-                        "is_liked": (
-                            spotify_id in liked_ids
-                        ),
+                        "is_liked": spotify_id in liked_ids,
                         "source_type": source_type,
                     }
                 )
 
         else:
-
             # Unmatched liked song.
             for spotify_id in spotify_ids:
-
                 if spotify_id not in liked_ids:
                     continue
 
@@ -553,9 +519,14 @@ def build_mapping(
                             "candidate rules."
                         ),
                         "is_liked": True,
-                        "source_type": "LIKED_ONLY",
+                        "source_type": (
+                            "LIKED_AND_WAREHOUSE"
+                            if spotify_id in warehouse_ids
+                            else "LIKED_ONLY"
+                        ),
                     }
                 )
+
                 
     # -----------------------------------------------------------------------
     # Newly liked IDs not present in the identity investigation
