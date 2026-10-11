@@ -1056,3 +1056,6 @@ def main():
         "downstream ETL and analytics."
     )
     
+    
+if __name__ == "__main__":
+    main()
