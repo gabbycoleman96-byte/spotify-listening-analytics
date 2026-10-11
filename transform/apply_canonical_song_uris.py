@@ -1,6 +1,9 @@
 """
 Apply canonical Spotify song identities to the warehouse.
 
+Run from the project root:
+python.exe -m transform.apply_canonical_song_uris
+
 The permanent song_identity_map is the authoritative source
 for Spotify song identity.
 
@@ -92,150 +95,39 @@ def count_mismatches() -> int:
         return int(result.scalar() or 0)
 
 
+
+
 def update_warehouse_in_batches(
     total_mismatches: int,
 ):
-    """Apply canonical URIs in batches with a real progress bar."""
+    """Update all mismatched canonical URIs in one SQL operation."""
 
     if total_mismatches == 0:
         print("Warehouse already uses canonical Spotify URIs.")
         return
 
-    updated_total = 0
+    print(
+        f"Updating {total_mismatches:,} warehouse rows in one operation..."
+    )
 
-    last_played_at = None
-    last_spotify_id = None
-
-    with tqdm(
-        total=total_mismatches,
-        desc="Canonical URI mapping",
-        unit="rows",
-        dynamic_ncols=True,
-    ) as progress:
-
-        while True:
-
-            # ------------------------------------------------------------
-            # Find the next batch of mismatched warehouse rows.
-            #
-            # The warehouse primary key is:
-            #     (played_at, spotify_id)
-            #
-            # Using that key lets us paginate deterministically without
-            # relying on MySQL's unsupported UPDATE ... LIMIT syntax.
-            # ------------------------------------------------------------
-
-            with engine.connect() as connection:
-
-                if last_played_at is None:
-
-                    result = connection.execute(
-                        text(
-                            """
-                            SELECT
-                                w.played_at,
-                                w.spotify_id
-                            FROM listening_history_warehouse AS w
-                            JOIN canonical_song_uris AS c
-                                ON w.spotify_id = c.spotify_id
-                            WHERE w.spotify_uri <> c.canonical_uri
-                            ORDER BY
-                                w.played_at,
-                                w.spotify_id
-                            LIMIT :batch_size
-                            """
-                        ),
-                        {
-                            "batch_size": BATCH_SIZE,
-                        },
-                    )
-
-                else:
-
-                    result = connection.execute(
-                        text(
-                            """
-                            SELECT
-                                w.played_at,
-                                w.spotify_id
-                            FROM listening_history_warehouse AS w
-                            JOIN canonical_song_uris AS c
-                                ON w.spotify_id = c.spotify_id
-                            WHERE w.spotify_uri <> c.canonical_uri
-                              AND (
-                                  w.played_at > :last_played_at
-                                  OR (
-                                      w.played_at = :last_played_at
-                                      AND w.spotify_id > :last_spotify_id
-                                  )
-                              )
-                            ORDER BY
-                                w.played_at,
-                                w.spotify_id
-                            LIMIT :batch_size
-                            """
-                        ),
-                        {
-                            "last_played_at": last_played_at,
-                            "last_spotify_id": last_spotify_id,
-                            "batch_size": BATCH_SIZE,
-                        },
-                    )
-
-                batch = result.fetchall()
-
-            if not batch:
-                break
-
-            batch_last_played_at = batch[-1][0]
-            batch_last_spotify_id = batch[-1][1]
-
-            # ------------------------------------------------------------
-            # Apply this batch.
-            #
-            # There is no LIMIT here. The primary-key boundary identifies
-            # exactly the batch we just selected.
-            # ------------------------------------------------------------
-
-            with engine.begin() as connection:
-
-                result = connection.execute(
-                    text(
-                        """
-                        UPDATE listening_history_warehouse AS w
-                        JOIN canonical_song_uris AS c
-                            ON w.spotify_id = c.spotify_id
-                        SET w.spotify_uri = c.canonical_uri
-                        WHERE w.spotify_uri <> c.canonical_uri
-                          AND (
-                              w.played_at < :batch_last_played_at
-                              OR (
-                                  w.played_at = :batch_last_played_at
-                                  AND w.spotify_id <= :batch_last_spotify_id
-                              )
-                          )
-                        """
-                    ),
-                    {
-                        "batch_last_played_at": batch_last_played_at,
-                        "batch_last_spotify_id": batch_last_spotify_id,
-                    },
-                )
-
-                updated = result.rowcount or 0
-
-            updated_total += updated
-            progress.update(updated)
-
-            last_played_at = batch_last_played_at
-            last_spotify_id = batch_last_spotify_id
-
-    if updated_total != total_mismatches:
-        raise RuntimeError(
-            "Canonical URI update count changed during processing. "
-            f"Expected {total_mismatches:,}, "
-            f"updated {updated_total:,}."
+    with engine.begin() as connection:
+        result = connection.execute(
+            text(
+                """
+                UPDATE listening_history_warehouse AS w
+                JOIN canonical_song_uris AS c
+                    ON w.spotify_id = c.spotify_id
+                SET w.spotify_uri = c.canonical_uri
+                WHERE w.spotify_uri <> c.canonical_uri
+                """
+            )
         )
+
+        updated_total = result.rowcount or 0
+
+    print(f"Rows updated: {updated_total:,}")
+
+
 
 
 def verify_canonical_mapping():
@@ -312,3 +204,6 @@ def apply_canonical_song_uris():
         f"Canonical URI mapping complete "
         f"({runtime:.2f}s)"
     )
+    
+if __name__ == "__main__":
+    apply_canonical_song_uris()

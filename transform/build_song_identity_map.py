@@ -53,6 +53,8 @@ SCHEMA_FILE = (
 
 FINAL_TABLE = "song_identity_map"
 BUILD_TABLE = "song_identity_map_build"
+BACKUP_TABLE = "song_identity_map_backup"
+
 
 
 # ---------------------------------------------------------------------------
@@ -860,13 +862,13 @@ def validate_build_table(
         )
 
 
-def swap_tables(
-    connection,
-):
-    """
-    Replace the existing table only after validation succeeds.
 
-    Existing table is preserved under a timestamped backup name.
+def swap_tables(connection):
+    """
+    Replace the existing identity map after validation.
+
+    Keep exactly one rolling backup of the previous permanent table.
+    Each successful rebuild replaces the previous backup.
     """
 
     has_final = table_exists(
@@ -875,29 +877,31 @@ def swap_tables(
     )
 
     if has_final:
-
-        backup_name = (
-            f"{FINAL_TABLE}_backup_"
-            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        # Remove the previous backup only after the new build table
+        # has already been created and validated.
+        connection.execute(
+            text(
+                f"DROP TABLE IF EXISTS {BACKUP_TABLE}"
+            )
         )
 
+        # Atomically move the current table to the fixed backup name
+        # and promote the validated build table to the permanent name.
         connection.execute(
             text(
                 f"""
                 RENAME TABLE
-                    {FINAL_TABLE} TO {backup_name},
+                    {FINAL_TABLE} TO {BACKUP_TABLE},
                     {BUILD_TABLE} TO {FINAL_TABLE}
                 """
             )
         )
 
         print(
-            f"Previous table backed up as: "
-            f"{backup_name}"
+            f"Previous table preserved as: {BACKUP_TABLE}"
         )
 
     else:
-
         connection.execute(
             text(
                 f"""
@@ -906,6 +910,7 @@ def swap_tables(
                 """
             )
         )
+
 
 
 # ---------------------------------------------------------------------------
@@ -1053,3 +1058,4 @@ def main():
         "\nPermanent identity map is ready for "
         "downstream ETL and analytics."
     )
+    
