@@ -191,10 +191,45 @@ def download_track_metadata(track_ids):
         if quota_exhausted:
             break
 
+        
         if track is None:
             continue
 
-        album = track["album"]
+        # Reject incomplete or mismatched Spotify responses before
+        # they can be inserted into the metadata tables.
+        album = track.get("album") or {}
+        track_name = track.get("name")
+        duration_ms = track.get("duration_ms")
+        returned_track_id = track.get("id")
+
+        invalid_reasons = []
+
+        if returned_track_id != track_id:
+            invalid_reasons.append("returned track ID does not match requested ID")
+
+        if not isinstance(track_name, str) or not track_name.strip():
+            invalid_reasons.append("track name is missing")
+
+        if (
+            not isinstance(duration_ms, (int, float))
+            or isinstance(duration_ms, bool)
+            or duration_ms <= 0
+        ):
+            invalid_reasons.append("duration is missing or invalid")
+
+        if not album.get("id"):
+            invalid_reasons.append("album ID is missing")
+
+        if not isinstance(album.get("name"), str) or not album["name"].strip():
+            invalid_reasons.append("album name is missing")
+
+        if invalid_reasons:
+            print(
+                f"Skipping malformed metadata for {track_id}: "
+                + "; ".join(invalid_reasons)
+            )
+            continue
+
 
         artists = track.get("artists", [])
 
