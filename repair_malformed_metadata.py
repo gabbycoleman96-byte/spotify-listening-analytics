@@ -116,10 +116,9 @@ def validate_candidate(original_id, config):
 
 
 
+
 def repair_track(original_id, config, track, apply_changes):
     """Repair one malformed track without changing its identity."""
-    import pandas as pd
-
     album = track["album"]
     scraped_at = datetime.now(UTC)
 
@@ -133,8 +132,8 @@ def repair_track(original_id, config, track, apply_changes):
     if not apply_changes:
         return
 
-    album_image_url = None
     images = album.get("images", [])
+    album_image_url = None
 
     if images:
         largest_image = max(
@@ -143,8 +142,7 @@ def repair_track(original_id, config, track, apply_changes):
         )
         album_image_url = largest_image.get("url")
 
-    # Insert album metadata only if this album ID does not already exist.
-    album_df = pd.DataFrame([{
+    album_params = {
         "album_id": album["id"],
         "album_uri": album.get("uri"),
         "album_name": album.get("name"),
@@ -156,17 +154,55 @@ def repair_track(original_id, config, track, apply_changes):
         "label": None,
         "spotify_url": album.get("external_urls", {}).get("spotify"),
         "scraped_at": scraped_at,
-    }])
+    }
 
-    load_dataframe(
-        album_df,
-        "album_metadata",
-        ignore_duplicates=True,
-    )
+    track_params = {
+        "original_id": original_id,
+        "track_name": track.get("name"),
+        "album_id": album.get("id"),
+        "duration_ms": track.get("duration_ms"),
+        "popularity": track.get("popularity"),
+        "explicit": track.get("explicit"),
+        "is_local": track.get("is_local"),
+        "is_playable": track.get("is_playable", True),
+        "track_number": track.get("track_number"),
+        "disc_number": track.get("disc_number"),
+        "preview_url": track.get("preview_url"),
+        "isrc": track.get("external_ids", {}).get("isrc"),
+        "spotify_url": track.get("external_urls", {}).get("spotify"),
+        "scraped_at": scraped_at,
+    }
 
-    # Update metadata fields only. Preserve the original Spotify ID and URI.
-    affected = execute_sql(
-        """
+    album_sql = text("""
+        INSERT IGNORE INTO album_metadata (
+            album_id,
+            album_uri,
+            album_name,
+            album_type,
+            release_date,
+            release_date_precision,
+            total_tracks,
+            album_art_url,
+            label,
+            spotify_url,
+            scraped_at
+        )
+        VALUES (
+            :album_id,
+            :album_uri,
+            :album_name,
+            :album_type,
+            :release_date,
+            :release_date_precision,
+            :total_tracks,
+            :album_art_url,
+            :label,
+            :spotify_url,
+            :scraped_at
+        )
+    """)
+
+    track_sql = text("""
         UPDATE track_metadata
         SET
             track_name = :track_name,
@@ -185,34 +221,22 @@ def repair_track(original_id, config, track, apply_changes):
         WHERE spotify_id = :original_id
           AND (track_name IS NULL OR TRIM(track_name) = '')
           AND COALESCE(duration_ms, 0) = 0
-        """,
-        {
-            "original_id": original_id,
-            "track_name": track.get("name"),
-            "album_id": album.get("id"),
-            "duration_ms": track.get("duration_ms"),
-            "popularity": track.get("popularity"),
-            "explicit": track.get("explicit"),
-            "is_local": track.get("is_local"),
-            "is_playable": track.get("is_playable", True),
-            "track_number": track.get("track_number"),
-            "disc_number": track.get("disc_number"),
-            "preview_url": track.get("preview_url"),
-            "isrc": track.get("external_ids", {}).get("isrc"),
-            "spotify_url": track.get("external_urls", {}).get("spotify"),
-            "scraped_at": scraped_at,
-        },
-    )
+    """)
 
-    if affected != 1:
-        raise RuntimeError(
-            f"Expected to update exactly one malformed row for "
-            f"{original_id}, but affected {affected} rows. "
-            "Check the database before proceeding."
-        )
+    # Both writes share a transaction. Any failure rolls back both.
+    with engine.begin() as connection:
+        connection.execute(album_sql, album_params)
+
+        result = connection.execute(track_sql, track_params)
+
+        if result.rowcount != 1:
+            raise RuntimeError(
+                f"Expected to update exactly one malformed row for "
+                f"{original_id}, but affected {result.rowcount} rows. "
+                "The transaction will be rolled back."
+            )
 
     print("  Metadata repair applied.")
-
 
 
 def main():
