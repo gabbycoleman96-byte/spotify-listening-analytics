@@ -24,100 +24,57 @@ from load.database import engine
 # Original Spotify ID -> verified candidate metadata source ID.
 
 REPAIR_MAP = {
-    "7BX9pdIbf4LkCIWmFYp3tN": {
-        "candidate_id": "1Cdvrq9EdMb6QwSJwPpGSd",
-        "track_name": "Celtic Cowboy",
-        "artist_name": "Charlotte Funke",
+    # Selected from malformed_metadata_candidate_audit.csv.
+    # Candidate IDs are metadata sources only. Original Spotify IDs stay unchanged.
+    "2C6BCDdtYjbbbAucqaw9NG": {
+        "candidate_id": "47jOhwEeIVJmBbAyziX3Zg",
+        "track_name": "Squares of Life",
+        "artist_name": "Piotr Miteska",
     },
-    "0CQskMydQ8AhtKhJUAolvE": {
-        "candidate_id": "0NFc4BKlTsiDv3M8Gf4p61",
-        "track_name": "Tallis One",
-        "artist_name": "Samuel Lindon",
+    "4WKJm0usdFOUQH5Y574WtZ": {
+        "candidate_id": "2UBEVuTDImGkqV9cBB9ROh",
+        "track_name": "La Lluvia",
+        "artist_name": "Relajar",
     },
-    "5jxBweBbPFg53Ozudm6HrC": {
-        "candidate_id": "0EhLVfXZ78vLPkSrE5rqZx",
-        "track_name": "Faded Dreams",
-        "artist_name": "Aaron Lansing",
+    "1hYEnW3hjGnnvTuEUlAD6h": {
+        "candidate_id": "38fVLaKtf3WxZzU3Kyp4KH",
+        "track_name": "Introspective",
+        "artist_name": "Josie O'Connor",
     },
-    "01T3AjynqSMVfiAQCAfrKJ": {
-        "candidate_id": "77jHPKK4FnCrPvpH9bfN25",
-        "track_name": "Evolutionistically Yours",
-        "artist_name": "Józef Gatysik",
+    "4TxfZzrq0dH2Wmfl4dAjN9": {
+        "candidate_id": "2rqo846QKr12uJYlZIR1Gf",
+        "track_name": "Ella's Lullaby",
+        "artist_name": "Enno Aare",
     },
-    "1e3JUGxqyfe94XBFnWdP11": {
-        "candidate_id": "0bFqBfmSPvqlCZ02bbh7eR",
-        "track_name": "Talisman Stallion",
-        "artist_name": "Bela Nemeth",
+    "6uWjjaiquXsjuQuks2mZME": {
+        "candidate_id": "6fbcVGWO3EQPxsDcdtKD02",
+        "track_name": "Sugarcane",
+        "artist_name": "Ana Olgica",
     },
-    "2erBrCFQNgGeMKVta0XVcJ": {
-        "candidate_id": "2o892JWoJ8mBJgCERI8iSQ",
-        "track_name": "Crossing Over",
-        "artist_name": "Les Clouds",
+    "1nPTaQHgrjKhSGb5ILEV47": {
+        "candidate_id": "3S7XRU18Ac8SkyGDC6roXw",
+        "track_name": "Atoms",
+        "artist_name": "Ana Olgica",
     },
-    "1BkATl6u7ttnmZi6Y3vfcQ": {
-        "candidate_id": "6EmWPtyzuo0YhX4U1AZGI8",
-        "track_name": "La Valse D'Amélie",
-        "artist_name": "Regina Mira",
+    "5FoZCDCl6WhrAIm4Ygyjg7": {
+        "candidate_id": "02IWtXAzwklsqeU3mvx27b",
+        "track_name": "Quiet Resource",
+        "artist_name": "Evelyn Stein",
     },
-    "4KDVmpe3jP6ESQCmdclGUC": {
-        "candidate_id": "1YwZE7e4AOwuRCHZhDKXW0",
-        "track_name": "Old House On The Hill",
-        "artist_name": "Les Clouds",
+    "2CqYEUz87EmtXLpu5QhjrQ": {
+        "candidate_id": "0TxiI8GYwzJFhgBACu8Eb8",
+        "track_name": "The Nomad",
+        "artist_name": "Koral Banko",
     },
-    "504NLPDUBRylbZUUQR97XX": {
-        "candidate_id": "0EhatQewc9cM0D6RS4aFPV",
-        "track_name": "The Watchtower",
-        "artist_name": "Sigimund",
-    },
-    "54MQc7UtIAogdoU5h0KNOP": {
-        "candidate_id": "0dSRypFUcx91S2dyp24pBz",
-        "track_name": "Twinkling Star",
-        "artist_name": "Clark Ingram",
-    },
-    "5C0pEMNp1Qr4LNDI3T7eVF": {
-        "candidate_id": "4WCts5QQmuYG6wxtNk9BRX",
-        "track_name": "Far and Beyond",
-        "artist_name": "Charles Bolt",
-    },
-    "6gp6sejiJXYU1i6xHPf8hh": {
-        "candidate_id": "1gqHiFzVd2dPCXfuP53DgQ",
-        "track_name": "This Moment",
-        "artist_name": "Bela Nemeth",
-    },
-    "7adF8nbrf6PWrdK7RPVjyF": {
-        "candidate_id": "611uLQ9Fv4WpBxtv8v5Bo5",
-        "track_name": "As Time Goes By",
-        "artist_name": "Isabella Ivanova",
-    },
-    "2wBb2lAmkZZIioQcJpH8D6": {
-        "candidate_id": "6tJkVhNGGK5nE4kHed36aR",
-        "track_name": "As She Rises",
-        "artist_name": "Dimitri Stöckl",
-    },
-    "5JJdBQbd2nokSTbDKk0dZm": {
-        "candidate_id": "6pvQle5UPIiZtJZWyI7NHI",
-        "track_name": "The Message",
-        "artist_name": "Les Clouds",
-    },
-    "5uuVGnkZEFHBz8unViC3iA": {
-        "candidate_id": "3X1oSEYbPipzoAGp6oDNhC",
-        "track_name": "G-Shit (feat. Blockboi Twitch)",
-        "artist_name": "Sidhu Moose Wala",
-    },
-    "6fhfMxO6LDmCKb0EsjYG0U": {
-        "candidate_id": "7qmA1rkHMclCwjmUczWXD1",
-        "track_name": "Smile",
-        "artist_name": "Leigh Watershed",
-    },
-    "6GiPDAnfhmpqwTE8lRazQS": {
-        "candidate_id": "2x1gaXZvBEMxAofYjw5nyT",
-        "track_name": "Moon River",
+    "6tIgg4Lw3DImnjDVOFWugE": {
+        "candidate_id": "6AK2FajKdKshplg1vBPp7T",
+        "track_name": "At Peace",
         "artist_name": "Lucina Chase",
     },
-    "7tfAVm2Fam6FpCkYhfcngh": {
-        "candidate_id": "4AAb7TCeYOzDOpTSLcev7u",
-        "track_name": "Swing Low Sweet Chariot",
-        "artist_name": "Ofelia Marsh",
+    "3nGc7yEGBuGtnn31RjHCeQ": {
+        "candidate_id": "4jRg5a1Rzt5b6SIYZuZG4K",
+        "track_name": "Some Day My Prince Will Come",
+        "artist_name": "Damien Sorbonne",
     },
 }
 
