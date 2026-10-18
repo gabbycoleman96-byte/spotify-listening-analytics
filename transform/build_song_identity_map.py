@@ -570,6 +570,20 @@ def build_mapping(
                 play_counts,
                 release_dates,
             )
+            
+            if any(
+                release_dates.get(spotify_id) is not None
+                for spotify_id in canonical_candidates
+            ):
+                selection_basis = (
+                    "earliest known release date, then listening history "
+                    "and Spotify ID tie-breaker"
+                )
+            else:
+                selection_basis = (
+                    "listening history, then Spotify ID tie-breaker "
+                    "(all candidate release dates unknown)"
+                )
 
             statuses = status_by_component[component]
 
@@ -593,17 +607,15 @@ def build_mapping(
                 resolution_reason = (
                     "Spotify IDs connected by a shared ISRC, "
                     "which takes priority in the identity hierarchy. "
-                    f"Canonical Spotify ID selected by earliest known "
-                    f"release date, then listening history and Spotify ID "
-                    f"tie-breaker: {canonical_id}."
+                    f"Canonical Spotify ID selected by {selection_basis}: "
+                    f"{canonical_id}."
                 )
             else:
                 resolution_reason = (
                     "Accepted identity group from "
                     "song identity investigation. "
-                    f"Canonical Spotify ID selected by earliest known "
-                    f"release date, then listening history and Spotify ID "
-                    f"tie-breaker: {canonical_id}."
+                    f"Canonical Spotify ID selected by {selection_basis}: "
+                    f"{canonical_id}."
                 )
 
             for spotify_id in spotify_ids:
