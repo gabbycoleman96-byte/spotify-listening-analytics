@@ -205,6 +205,103 @@ def load_warehouse_play_counts() -> dict[str, int]:
     }
 
 
+def normalize_release_date(
+    release_date,
+    release_date_precision,
+) -> str | None:
+    """
+    Normalize Spotify album release dates to YYYY-MM-DD.
+
+    Partial dates use their earliest possible date:
+        1984       -> 1984-01-01
+        1984-06    -> 1984-06-01
+        1984-06-15 -> 1984-06-15
+
+    Unknown or invalid dates return None.
+    """
+
+    if pd.isna(release_date):
+        return None
+
+    release_date = str(release_date).strip()
+
+    if not release_date:
+        return None
+
+    precision = (
+        str(release_date_precision).strip().lower()
+        if pd.notna(release_date_precision)
+        else ""
+    )
+
+    try:
+        if precision == "year" or len(release_date) == 4:
+            normalized_date = datetime.strptime(
+                release_date,
+                "%Y",
+            ).date()
+
+        elif precision == "month" or len(release_date) == 7:
+            normalized_date = datetime.strptime(
+                release_date,
+                "%Y-%m",
+            ).date()
+
+        elif precision == "day" or len(release_date) == 10:
+            normalized_date = datetime.strptime(
+                release_date,
+                "%Y-%m-%d",
+            ).date()
+
+        else:
+            return None
+
+    except ValueError:
+        return None
+
+    return normalized_date.isoformat()
+
+
+def load_spotify_release_dates() -> dict[str, str]:
+    """
+    Load normalized release dates for Spotify track IDs.
+
+    Release dates are album-level metadata, so each track receives
+    the date of its associated album.
+    """
+
+    metadata_df = pd.read_sql(
+        text(
+            """
+            SELECT
+                t.spotify_id,
+                a.release_date,
+                a.release_date_precision
+            FROM track_metadata AS t
+            LEFT JOIN album_metadata AS a
+                ON a.album_id = t.album_id
+            WHERE t.spotify_id IS NOT NULL
+            """
+        ),
+        engine,
+    )
+
+    release_dates = {}
+
+    for _, row in metadata_df.iterrows():
+        spotify_id = str(row["spotify_id"]).strip()
+
+        normalized_date = normalize_release_date(
+            row["release_date"],
+            row["release_date_precision"],
+        )
+
+        if normalized_date is not None:
+            release_dates[spotify_id] = normalized_date
+
+    return release_dates
+
+
 def load_isrc_groups() -> list[set[str]]:
     """Load warehouse Spotify IDs that share a normalized ISRC."""
 
@@ -325,17 +422,44 @@ def build_components(
 def choose_component_canonical(
     canonical_candidates: set[str],
     play_counts: dict[str, int],
+    release_dates: dict[str, str],
 ) -> str:
     """
     Choose the canonical Spotify ID for an identity component.
 
-    Highest listening history wins.
+    Selection order:
+        1. Earliest known release date.
+        2. Highest listening history among candidates tied on date.
+        3. Highest Spotify ID as the existing deterministic tie-breaker.
 
-    Spotify ID provides deterministic tie-breaking.
+    If every candidate has an unknown release date, fall back to the
+    existing play-count and Spotify-ID selection rules.
     """
 
+    candidates_with_dates = {
+        spotify_id: release_dates[spotify_id]
+        for spotify_id in canonical_candidates
+        if release_dates.get(spotify_id) is not None
+    }
+
+    if candidates_with_dates:
+        earliest_release_date = min(
+            candidates_with_dates.values()
+        )
+
+        earliest_candidates = {
+            spotify_id
+            for spotify_id, release_date in candidates_with_dates.items()
+            if release_date == earliest_release_date
+        }
+
+    else:
+        # No candidate has a known release date.
+        # Preserve the existing selection behavior.
+        earliest_candidates = canonical_candidates
+
     return max(
-        canonical_candidates,
+        earliest_candidates,
         key=lambda spotify_id: (
             play_counts.get(
                 spotify_id,
@@ -355,6 +479,7 @@ def build_mapping(
     liked_ids: set[str],
     warehouse_ids: set[str],
     play_counts: dict[str, int],
+    release_dates: dict[str, str],
     isrc_groups: list[set[str]],
 ) -> pd.DataFrame:
 
@@ -443,6 +568,7 @@ def build_mapping(
             canonical_id = choose_component_canonical(
                 canonical_candidates,
                 play_counts,
+                release_dates,
             )
 
             statuses = status_by_component[component]
@@ -467,15 +593,17 @@ def build_mapping(
                 resolution_reason = (
                     "Spotify IDs connected by a shared ISRC, "
                     "which takes priority in the identity hierarchy. "
-                    f"Canonical Spotify ID selected by listening "
-                    f"history: {canonical_id}."
+                    f"Canonical Spotify ID selected by earliest known "
+                    f"release date, then listening history and Spotify ID "
+                    f"tie-breaker: {canonical_id}."
                 )
             else:
                 resolution_reason = (
                     "Accepted identity group from "
                     "song identity investigation. "
-                    f"Canonical Spotify ID selected by listening "
-                    f"history: {canonical_id}."
+                    f"Canonical Spotify ID selected by earliest known "
+                    f"release date, then listening history and Spotify ID "
+                    f"tie-breaker: {canonical_id}."
                 )
 
             for spotify_id in spotify_ids:
@@ -947,10 +1075,17 @@ def main():
     )
 
     # -----------------------------------------------------------------------
-    # Load play counts
+    # Load play counts and release dates
     # -----------------------------------------------------------------------
 
     play_counts = load_warehouse_play_counts()
+
+    release_dates = load_spotify_release_dates()
+
+    print(
+        f"Spotify IDs with known release dates: "
+        f"{len(release_dates):,}"
+    )
 
     # -----------------------------------------------------------------------
     # Build mapping
@@ -969,6 +1104,7 @@ def main():
         liked_ids,
         warehouse_ids,
         play_counts,
+        release_dates,
         isrc_groups,
     )
 
