@@ -93,6 +93,7 @@ canonical_tracks AS (
 
     SELECT
         tm.album_id,
+        tm.spotify_id,
 
         CONCAT(
             'spotify:track:',
@@ -145,7 +146,7 @@ ordered_events AS (
     FROM listening_history_warehouse w
 
     LEFT JOIN canonical_tracks ct
-        ON ct.spotify_uri = w.spotify_uri
+        ON ct.spotify_id = w.spotify_id
 
     LEFT JOIN complete_albums ca
         ON ca.album_id = ct.album_id
@@ -218,7 +219,7 @@ sequence_summary AS (
         MIN(album_track_position) AS first_track_position,
         MAX(album_track_position) AS last_track_position,
 
-        COUNT(DISTINCT spotify_uri) AS distinct_tracks
+        COUNT(DISTINCT album_track_position) AS distinct_tracks
 
     FROM grouped_sequences
 
