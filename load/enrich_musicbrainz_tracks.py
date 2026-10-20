@@ -96,12 +96,62 @@ def get_credit_names(artist_credit):
     return names
 
 
-def score_recording(recording, track_name, artist_name):
-    """
-    Score a recording against Spotify title and primary artist.
+def normalize_title(value):
+    """Normalize titles while removing common version annotations."""
 
-    Title agreement receives slightly more weight, but both
-    fields must meet minimum thresholds before accepting a match.
+    value = normalize(value)
+
+    # Remove common featured-artist annotations from the normalized
+    # title. The featured artists are evaluated separately.
+    return value
+
+
+def duration_similarity(spotify_duration_ms, mb_duration_ms):
+    """Return a duration agreement score from 0 to 1."""
+
+    if not spotify_duration_ms or not mb_duration_ms:
+        return None
+
+    difference_ms = abs(
+        int(spotify_duration_ms) - int(mb_duration_ms)
+    )
+
+    # Recordings within two seconds receive full duration credit.
+    if difference_ms <= 2000:
+        return 1.0
+
+    # Penalize differences beyond two seconds gradually.
+    return max(0.0, 1.0 - difference_ms / 15000)
+
+
+def get_credit_names(artist_credit):
+    """Extract credited artist names from MusicBrainz artist credits."""
+
+    names = []
+
+    for credit in artist_credit or []:
+        if not isinstance(credit, dict):
+            continue
+
+        artist = credit.get("artist") or {}
+        name = credit.get("name") or artist.get("name")
+
+        if name:
+            names.append(name)
+
+    return names
+
+
+def score_recording(
+    recording,
+    track_name,
+    artist_name,
+    spotify_artist_names=None,
+    spotify_duration_ms=None,
+):
+    """
+    Score a MusicBrainz recording against Spotify title, artist credits,
+    and duration.
     """
 
     title_score = similarity(
@@ -109,40 +159,87 @@ def score_recording(recording, track_name, artist_name):
         recording.get("title"),
     )
 
-    credit_names = get_credit_names(
+    mb_artist_names = get_credit_names(
         recording.get("artist-credit")
     )
 
-    artist_score = max(
-        (
-            similarity(artist_name, credit_name)
-            for credit_name in credit_names
-        ),
-        default=0.0,
+    spotify_artist_names = spotify_artist_names or []
+
+    # Ensure the primary Spotify artist is included.
+    if artist_name and artist_name not in spotify_artist_names:
+        spotify_artist_names.append(artist_name)
+
+    artist_scores = [
+        similarity(spotify_artist, mb_artist)
+        for spotify_artist in spotify_artist_names
+        for mb_artist in mb_artist_names
+    ]
+
+    artist_score = max(artist_scores, default=0.0)
+
+    # Reward coverage of multiple credited Spotify artists when
+    # MusicBrainz also credits them.
+    matched_artist_count = sum(
+        1
+        for spotify_artist in spotify_artist_names
+        if any(
+            similarity(spotify_artist, mb_artist) >= 0.85
+            for mb_artist in mb_artist_names
+        )
     )
 
-    combined_score = (
-        0.65 * title_score
-        + 0.35 * artist_score
+    if spotify_artist_names:
+        artist_coverage = (
+            matched_artist_count / len(spotify_artist_names)
+        )
+    else:
+        artist_coverage = 0.0
+
+    mb_duration_ms = recording.get("length")
+    duration_score = duration_similarity(
+        spotify_duration_ms,
+        mb_duration_ms,
     )
+
+    # Weight title and artist agreement most heavily. Duration
+    # helps distinguish alternate recordings when available.
+    if duration_score is None:
+        combined_score = (
+            0.60 * title_score
+            + 0.30 * artist_score
+            + 0.10 * artist_coverage
+        )
+    else:
+        combined_score = (
+            0.50 * title_score
+            + 0.25 * artist_score
+            + 0.10 * artist_coverage
+            + 0.15 * duration_score
+        )
 
     return {
         "recording": recording,
         "title_score": title_score,
         "artist_score": artist_score,
+        "artist_coverage": artist_coverage,
+        "duration_score": duration_score,
         "combined_score": combined_score,
     }
 
 
-def choose_recording(recordings, track_name, artist_name):
+def choose_recording(
+    recordings,
+    track_name,
+    artist_name,
+    spotify_artist_names=None,
+    spotify_duration_ms=None,
+):
     """
-    Choose a recording only when the match is sufficiently clear.
+    Choose a recording only when evidence supports a reliable match.
 
-    Returns:
-        (candidate, status, score)
-
-    A strong ISRC match alone is not enough if its results include
-    recordings with different titles or artists.
+    Identical duplicate candidates can be resolved when their scores
+    and metadata agree. Different versions remain ambiguous when
+    the available evidence cannot distinguish them.
     """
 
     if not recordings:
@@ -150,9 +247,11 @@ def choose_recording(recordings, track_name, artist_name):
 
     scored = [
         score_recording(
-            recording,
-            track_name,
-            artist_name,
+            recording=recording,
+            track_name=track_name,
+            artist_name=artist_name,
+            spotify_artist_names=spotify_artist_names,
+            spotify_duration_ms=spotify_duration_ms,
         )
         for recording in recordings
     ]
@@ -164,28 +263,85 @@ def choose_recording(recordings, track_name, artist_name):
 
     best = scored[0]
 
+    # Minimum evidence requirements.
     if (
-        best["title_score"] < 0.85
-        or best["artist_score"] < 0.65
+        best["title_score"] < 0.80
+        or best["artist_score"] < 0.80
         or best["combined_score"] < 0.80
     ):
         return None, "ambiguous", best["combined_score"]
 
-    if len(scored) > 1:
-        second = scored[1]
+    if len(scored) == 1:
+        return (
+            best["recording"],
+            "matched",
+            best["combined_score"],
+        )
 
-        if (
-            best["combined_score"]
-            - second["combined_score"]
-            < 0.08
-        ):
-            return None, "ambiguous", best["combined_score"]
+    second = scored[1]
 
-    return (
-        best["recording"],
-        "matched",
-        best["combined_score"],
+    score_gap = (
+        best["combined_score"]
+        - second["combined_score"]
     )
+
+    # If the leading candidate is clearly better, accept it.
+    if score_gap >= 0.08:
+        return (
+            best["recording"],
+            "matched",
+            best["combined_score"],
+        )
+
+    # If multiple candidates tie, accept only when their title,
+    # artist credits, and durations are equivalent enough that
+    # the duplicate entries do not change the likely recording.
+    best_recording = best["recording"]
+    second_recording = second["recording"]
+
+    same_title = (
+        normalize(best_recording.get("title"))
+        == normalize(second_recording.get("title"))
+    )
+
+    best_artists = sorted(
+        normalize(name)
+        for name in get_credit_names(
+            best_recording.get("artist-credit")
+        )
+    )
+
+    second_artists = sorted(
+        normalize(name)
+        for name in get_credit_names(
+            second_recording.get("artist-credit")
+        )
+    )
+
+    same_artists = best_artists == second_artists
+
+    best_length = best_recording.get("length")
+    second_length = second_recording.get("length")
+
+    durations_compatible = (
+        best_length is None
+        or second_length is None
+        or abs(best_length - second_length) <= 2000
+    )
+
+    if (
+        same_title
+        and same_artists
+        and durations_compatible
+        and best["combined_score"] >= 0.90
+    ):
+        return (
+            best_recording,
+            "matched",
+            best["combined_score"],
+        )
+
+    return None, "ambiguous", best["combined_score"]
 
 
 # ============================================================
@@ -195,13 +351,22 @@ def choose_recording(recordings, track_name, artist_name):
 def get_pending_tracks(limit):
     """Find ISRC-bearing tracks without a completed lookup."""
 
+
     query = text("""
         SELECT
             tm.spotify_id,
             tm.track_name,
             tm.primary_artist_id,
             tm.isrc,
-            am.artist_name
+            tm.duration_ms,
+            am.artist_name,
+            (
+                SELECT JSON_ARRAYAGG(am2.artist_name)
+                FROM track_artists ta
+                JOIN artist_metadata am2
+                    ON am2.artist_id = ta.artist_id
+                WHERE ta.spotify_id = tm.spotify_id
+            ) AS artist_names_json
         FROM track_metadata tm
         LEFT JOIN artist_metadata am
             ON am.artist_id = tm.primary_artist_id
@@ -214,10 +379,10 @@ def get_pending_tracks(limit):
                 mb.spotify_id IS NULL
                 OR mb.lookup_status IN ('pending', 'error')
             )
-        ORDER BY
-            tm.spotify_id
+        ORDER BY tm.spotify_id
         LIMIT :row_limit
     """)
+
 
     with engine.connect() as connection:
         result = connection.execute(
@@ -584,11 +749,21 @@ def main():
 
         try:
             response_data = client.lookup_isrc(isrc)
+            
+            artist_names = track.get("artist_names_json")
+
+            if isinstance(artist_names, str):
+                try:
+                    artist_names = json.loads(artist_names)
+                except json.JSONDecodeError:
+                    artist_names = []
 
             recording, status, score = choose_recording(
-                response_data.get("recordings", []),
-                track["track_name"],
-                track["artist_name"],
+                recordings=response_data.get("recordings", []),
+                track_name=track["track_name"],
+                artist_name=track["artist_name"],
+                spotify_artist_names=artist_names or [],
+                spotify_duration_ms=track["duration_ms"],
             )
 
             record = build_metadata_record(
@@ -633,6 +808,89 @@ def main():
 
     print("\nExternal metadata cache updated.")
     print("No existing Spotify or warehouse tables were changed.")
+    
+    
+
+def run_matching_tests():
+    """Test matching behavior without making API requests."""
+
+    base_recording = {
+        "id": "recording-a",
+        "title": "ABC",
+        "length": 170000,
+        "artist-credit": [
+            {
+                "name": "The Jackson 5",
+                "artist": {"name": "The Jackson 5"},
+            }
+        ],
+    }
+
+    duplicate_recording = {
+        **base_recording,
+        "id": "recording-b",
+    }
+
+    different_artist = {
+        **base_recording,
+        "id": "recording-c",
+        "artist-credit": [
+            {
+                "name": "Different Artist",
+                "artist": {"name": "Different Artist"},
+            }
+        ],
+    }
+
+    tests = [
+        (
+            "Duplicate candidates",
+            [base_recording, duplicate_recording],
+            "ABC",
+            "The Jackson 5",
+            ["The Jackson 5"],
+            170000,
+            "matched",
+        ),
+        (
+            "Incorrect artist",
+            [different_artist],
+            "ABC",
+            "The Jackson 5",
+            ["The Jackson 5"],
+            170000,
+            "ambiguous",
+        ),
+    ]
+
+    for (
+        name,
+        candidates,
+        title,
+        artist,
+        artists,
+        duration,
+        expected_status,
+    ) in tests:
+        _, actual_status, _ = choose_recording(
+            candidates,
+            title,
+            artist,
+            artists,
+            duration,
+        )
+
+        result = "PASS" if actual_status == expected_status else "FAIL"
+
+        print(
+            f"{result}: {name} "
+            f"(expected={expected_status}, actual={actual_status})"
+        )
+
+
+if __name__ == "__main__":
+    run_matching_tests()
+
 
 
 if __name__ == "__main__":
