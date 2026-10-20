@@ -124,24 +124,6 @@ def duration_similarity(spotify_duration_ms, mb_duration_ms):
     return max(0.0, 1.0 - difference_ms / 15000)
 
 
-def get_credit_names(artist_credit):
-    """Extract credited artist names from MusicBrainz artist credits."""
-
-    names = []
-
-    for credit in artist_credit or []:
-        if not isinstance(credit, dict):
-            continue
-
-        artist = credit.get("artist") or {}
-        name = credit.get("name") or artist.get("name")
-
-        if name:
-            names.append(name)
-
-    return names
-
-
 def score_recording(
     recording,
     track_name,
