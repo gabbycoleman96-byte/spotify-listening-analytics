@@ -30,6 +30,8 @@ from dataclasses import dataclass
 from datetime import datetime, time
 from time import perf_counter
 from pathlib import Path
+import subprocess
+import sys
 
 from extract.liked_songs import download_liked_songs
 from extract.recent_tracks import download_recent_tracks
@@ -129,7 +131,7 @@ def run_liked_songs_stage():
     stage_start = perf_counter()
 
     stage_name = "Liked Songs"
-    print_stage_header(1, 11, stage_name)
+    print_stage_header(1, 12, stage_name)
     print("Checking for new liked songs...")
 
     latest_liked_song = get_latest_liked_song_date()
@@ -168,7 +170,7 @@ def run_recent_tracks_stage():
     stage_start = perf_counter()
 
     stage_name = "Recent Tracks"
-    print_stage_header(2, 11, stage_name)
+    print_stage_header(2, 12, stage_name)
     print("Downloading recently played tracks...")
 
     recent_df = download_recent_tracks()
@@ -274,7 +276,7 @@ def run_warehouse_stage():
     stage_start = perf_counter()
 
     stage_name = "Listening History Warehouse"
-    print_stage_header(3, 11, stage_name)
+    print_stage_header(3, 12, stage_name)
     print("Rebuilding listening history warehouse...")
 
     warehouse_df = build_warehouse_dataframe()
@@ -315,7 +317,7 @@ def run_song_identity_map_stage():
     stage_start = perf_counter()
 
     stage_name = "Song Identity Map"
-    print_stage_header(4, 11, stage_name)
+    print_stage_header(4, 12, stage_name)
     print("Rebuilding permanent Spotify song identity map...")
 
     build_song_identity_map()
@@ -332,7 +334,7 @@ def run_canonical_uri_stage():
     stage_start = perf_counter()
 
     stage_name = "Canonical URI Mapping"
-    print_stage_header(5, 11, stage_name)
+    print_stage_header(5, 12, stage_name)
     print("Applying canonical Spotify song identities...")
 
     apply_canonical_song_uris()
@@ -349,7 +351,7 @@ def run_artist_metadata_stage():
     stage_start = perf_counter()
 
     stage_name = "Artist Metadata"
-    print_stage_header(6, 11, stage_name)
+    print_stage_header(6, 12, stage_name)
     print("Downloading metadata for new artists...")
 
     artist_ids = get_missing_artist_ids()
@@ -382,7 +384,7 @@ def run_track_metadata_stage():
     stage_start = perf_counter()
 
     stage_name = "Track Metadata"
-    print_stage_header(7, 11, stage_name)
+    print_stage_header(7, 12, stage_name)
     print("Downloading metadata for new tracks...")
 
     metadata = load_track_metadata()
@@ -400,13 +402,90 @@ def run_track_metadata_stage():
         rows_loaded=rows_loaded,
         runtime=stage_runtime,
     )
+
+
+def run_external_music_enrichment_stage():
+    stage_start = perf_counter()
+
+    stage_name = "External Music Metadata"
+    print_stage_header(8, 12, stage_name)
+    print("Enriching tracks and artists with MusicBrainz and Last.fm...")
+
+    commands = [
+        (
+            "MusicBrainz Track Metadata",
+            [
+                sys.executable,
+                "-m",
+                "load.enrich_musicbrainz_tracks",
+                "--all",
+            ],
+        ),
+        (
+            "Last.fm Track Metadata",
+            [
+                sys.executable,
+                "-m",
+                "load.enrich_lastfm",
+                "--entity",
+                "tracks",
+                "--all",
+            ],
+        ),
+        (
+            "Last.fm Artist Metadata",
+            [
+                sys.executable,
+                "-m",
+                "load.enrich_lastfm",
+                "--entity",
+                "artists",
+                "--all",
+            ],
+        ),
+    ]
+
+    failures = []
+
+    for enrichment_name, command in commands:
+        print(f"\n--- {enrichment_name} ---")
+
+        try:
+            result = subprocess.run(
+                command,
+                check=False,
+            )
+
+            if result.returncode != 0:
+                failures.append(enrichment_name)
+                print(
+                    f"WARNING: {enrichment_name} exited "
+                    f"with code {result.returncode}."
+                )
+
+        except Exception as error:
+            failures.append(enrichment_name)
+            print(f"WARNING: {enrichment_name} failed: {error}")
+
+    if failures:
+        print("\nExternal enrichment warnings:")
+        for failure in failures:
+            print(f"  - {failure}")
+        print("Continuing with the core ETL pipeline.")
+    else:
+        print("\nAll external enrichment commands completed.")
+
+    stage_runtime = perf_counter() - stage_start
+    print_stage_complete(stage_name, stage_runtime)
+
+    return StageResult(runtime=stage_runtime)
     
     
 def run_album_art_stage():
     stage_start = perf_counter()
 
     stage_name = "Album Art"
-    print_stage_header(8, 11, stage_name)
+    print_stage_header(9, 12, stage_name)
     print("Updating album artwork...")
 
     rows_loaded = process_album_art()
@@ -424,7 +503,7 @@ def run_warehouse_enrichment_stage():
     stage_start = perf_counter()
 
     stage_name = "Warehouse Enrichment"
-    print_stage_header(9, 11, stage_name)
+    print_stage_header(10, 12, stage_name)
     print("Rebuilding warehouse enrichment...")
 
     enriched_df = rebuild_warehouse_enrichment()
@@ -454,7 +533,7 @@ def run_analytics_stage():
     stage_start = perf_counter()
 
     stage_name = "Analytics"
-    print_stage_header(10, 11, stage_name)
+    print_stage_header(11, 12, stage_name)
     print("Rebuilding analytics tables...")
 
     rebuild_analytics_tables()
@@ -469,7 +548,7 @@ def run_export_stage():
     stage_start = perf_counter()
 
     stage_name = "Tableau Export"
-    print_stage_header(11, 11, stage_name)
+    print_stage_header(12, 12, stage_name)
     print("Exporting Tableau datasets...")
 
     export_tables(EXPORT_TABLES)
@@ -499,6 +578,7 @@ def main():
         canonical_uri_result = run_canonical_uri_stage()
         artist_metadata_result = run_artist_metadata_stage()
         track_metadata_result = run_track_metadata_stage()
+        external_music_result = run_external_music_enrichment_stage()
         album_art_result = run_album_art_stage()
         warehouse_enrichment_result = run_warehouse_enrichment_stage()
         analytics_result = run_analytics_stage()
@@ -514,6 +594,7 @@ def main():
                 ("Canonical URI", canonical_uri_result),
                 ("Artist Metadata", artist_metadata_result),
                 ("Track Metadata", track_metadata_result),
+                ("External Music Metadata", external_music_result),
                 ("Album Art", album_art_result),
                 ("Warehouse Enrichment", warehouse_enrichment_result),
                 ("Analytics", analytics_result),
