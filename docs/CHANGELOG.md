@@ -4,6 +4,57 @@ All notable changes to Spotify Listening Analytics are documented here.
 
 The project uses release milestones to distinguish stable functionality from future improvements.
 
+
+# [2026-10-20] – External Music Metadata Enrichment
+
+## Added
+
+### MusicBrainz Track Enrichment
+
+- Added `load/enrich_musicbrainz_tracks.py` to enrich Spotify tracks with MusicBrainz metadata.
+- Added ISRC normalization to improve matching for identifiers containing formatting differences.
+- Added matching logic that considers artist credits, track duration, and duplicate candidates.
+- Cached lookup results and match statuses in `musicbrainz_track_metadata`.
+- Added release-date enrichment to support canonical track selection and album-listening analysis.
+
+### Last.fm Enrichment
+
+- Added `load/enrich_lastfm.py` to retrieve track and artist metadata from Last.fm.
+- Added track and artist metadata caching in `lastfm_track_metadata` and `lastfm_artist_metadata`.
+- Added tag storage in `external_track_tags` and `external_artist_tags`.
+- Added lookup statuses and error details to help distinguish successful matches from unsuccessful lookups.
+- Added command-line options for testing limited batches and processing all eligible records.
+
+## Changed
+
+### Main ETL Pipeline
+
+- Integrated MusicBrainz track enrichment and Last.fm track and artist enrichment into `main.py`.
+- Added external enrichment warning handling so enrichment failures can be reported without automatically stopping the core pipeline.
+- Kept external metadata in separate tables to avoid disrupting listening-history transformations and existing analytics.
+
+### Project Documentation
+
+- Updated `README.md` to document the current architecture, setup, enrichment workflows, and project status.
+- Updated `docs/architecture.md` to describe pipeline execution, enrichment, and failure handling.
+- Updated `docs/data_dictionary.md` to document external metadata tables and their current limitations.
+- Updated `docs/design_decisions.md` to record enrichment architecture and related design choices.
+- Updated `docs/project_journal.md` to record implementation history, validation results, and project milestones.
+
+## Validated
+
+- Completed initial MusicBrainz track-enrichment processing and retried records affected by ISRC formatting differences.
+- Tested Last.fm track and artist enrichment with limited batches before integrating the jobs into the main pipeline.
+- Confirmed that the external metadata tables retain lookup results for reuse by subsequent runs.
+
+## Deferred
+
+- MusicBrainz artist enrichment workflow.
+- Last.fm similar-track retrieval and population of `lastfm_similar_tracks`.
+- Using external tags to populate the warehouse's primary and secondary genre fields.
+- Further use of enriched metadata in Tableau dashboards and playlist-generation workflows.
+
+
 ---
 
 # [2026-08-13] – Dashboard Completion Checkpoint
