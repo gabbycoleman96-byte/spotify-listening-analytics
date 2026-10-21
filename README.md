@@ -1,310 +1,501 @@
 # Spotify Listening Analytics
 
-> An end-to-end personal Spotify data engineering and analytics project that collects listening history, transforms it into a MySQL warehouse, enriches the data, and powers a Tableau Public dashboard.
+A personal music data engineering and analytics project that transforms Spotify listening history into a structured MySQL warehouse, enriches tracks and artists with external music metadata, and powers interactive Tableau Public dashboards.
 
-![Pipeline](https://img.shields.io/badge/pipeline-1.0.0-success)
-![Warehouse](https://img.shields.io/badge/warehouse-1.1-blue)
+**Repository:** [spotify-listening-analytics](https://github.com/gabbycoleman96-byte/spotify-listening-analytics)
+
 ![Python](https://img.shields.io/badge/Python-3.x-blue)
 ![MySQL](https://img.shields.io/badge/MySQL-8.x-orange)
 ![Tableau](https://img.shields.io/badge/Tableau-Public-blue)
+![Status](https://img.shields.io/badge/Project-Active-success)
 
 ---
 
-## Current Status
+## Project Overview
 
-**Dashboard completion phase**
+Spotify Listening Analytics began as a dashboard built around personal listening history. It has evolved into a modular data engineering project with historical data ingestion, ETL orchestration, relational data modeling, metadata enrichment, quality controls, SQL analytics, and Tableau-ready exports.
 
-The core ETL pipeline is operational and has been running successfully on a recurring schedule. The current priority is finishing the Tableau Public dashboard rather than adding new infrastructure.
+The project combines personal listening records with track, artist, album, release, and community-supplied music metadata. The goal is to explore listening habits while building a reusable foundation for music discovery, library analysis, and future playlist-generation tools.
 
-The project currently contains:
+### Core capabilities
 
-- A permanent raw Spotify listening-history table
-- A transformed listening-history warehouse
-- Spotify metadata enrichment
-- Data-quality and anomaly flags
-- Calendar and listening-behavior dimensions
-- SQL analytics
-- Tableau-ready exports
-- Automated ETL execution
-- A multi-page Tableau Public dashboard
-
-Infrastructure improvements are intentionally deferred until the dashboard is complete.
+- Import Spotify Extended Streaming History into MySQL.
+- Preserve raw listening records for reproducible transformations.
+- Clean and transform listening events into an analytical warehouse.
+- Maintain Spotify track, artist, album, and canonical song identity metadata.
+- Enrich track release information through MusicBrainz.
+- Enrich track and artist metadata and tags through Last.fm.
+- Track data-quality issues and flag suspicious playback patterns.
+- Generate SQL analytics and Tableau-ready CSV exports.
+- Automate recurring ETL execution with Windows Task Scheduler.
+- Record pipeline execution status, runtime, and errors.
 
 ---
 
-# Overview
-
-Spotify Listening Analytics began as a Tableau dashboard project and evolved into a small personal data platform.
-
-The project uses Spotify Extended Streaming History as the authoritative historical listening source and stores the data in MySQL. Python handles extraction, cleaning, transformation, enrichment, loading, analytics, and export.
+## Architecture
 
 ```text
 Spotify Extended Streaming History
-                │
-                ▼
-       listening_history_raw
-                │
-                ▼
-       Cleaning / Transform
-                │
-                ├── duplicate removal
-                ├── impossible-play detection
-                ├── offline timestamp correction
-                ├── calendar dimensions
-                └── metadata enrichment
-                │
-                ▼
-    listening_history_warehouse
-                │
-        ┌───────┴────────┐
-        ▼                ▼
-   SQL Analytics     Tableau Export
-                         │
-                         ▼
-                   Tableau Public
+                 |
+                 v
+       Raw Listening History
+        listening_history_raw
+                 |
+                 v
+       Python ETL Orchestration
+                 |
+       +---------+----------+
+       |                    |
+       v                    v
+ Spotify Metadata      External Enrichment
+ Track / Artist /      MusicBrainz / Last.fm
+ Album / Identity            |
+       |                     v
+       |              External Metadata Cache
+       |              Tags / Release Metadata
+       |                     |
+       +----------+----------+
+                  |
+                  v
+       Warehouse Transformation
+       Cleaning / Time Dimensions
+       Identity Mapping / Quality Flags
+                  |
+                  v
+       listening_history_warehouse
+                  |
+           +------+------+
+           |             |
+           v             v
+      SQL Analytics   Tableau Exports
+                          |
+                          v
+                    Tableau Public
 ```
 
----
-
-# Project Goals
-
-The project demonstrates practical skills in:
-
-- Data engineering and ETL design
-- Relational data warehousing
-- Python data transformation
-- SQL analytics
-- Data quality and anomaly detection
-- API and historical-export integration
-- Tableau dashboard development
-- Workflow automation
-- Technical documentation
-
-The end goal is a portfolio-quality analytics product built from real personal listening data rather than a static sample dataset.
+The warehouse is rebuilt from the available historical source data during a normal pipeline run. External metadata is stored in dedicated cache tables rather than being treated as part of the raw Spotify source.
 
 ---
 
-# Repository Structure
+## Technology Stack
+
+| Area | Technologies |
+|---|---|
+| Programming | Python |
+| Data processing | pandas |
+| Database | MySQL 8 |
+| Database access | SQLAlchemy, MySQL Connector |
+| APIs | Spotify Web API, MusicBrainz, Last.fm |
+| HTTP requests | requests |
+| Configuration | python-dotenv |
+| Analytics | SQL |
+| Visualization | Tableau Public |
+| Automation | Windows Task Scheduler |
+| Version control | Git and GitHub |
+
+---
+
+## Repository Structure
 
 ```text
 spotify-listening-analytics/
-
-├── api/
-├── config/
-├── data/
-├── extract/
-├── load/
+├── api/                         # API clients and related assets
+├── config/                      # Pipeline and export configuration
+├── data/                        # Local source and intermediate data
+├── docs/                        # Project documentation
+├── export/                      # Tableau dataset exports
+├── extract/                     # Spotify data extraction
+├── load/                        # Database loading and enrichment
+│   ├── database.py
+│   ├── etl_logger.py
+│   ├── load_artist_metadata.py
+│   ├── load_track_metadata.py
+│   ├── enrich_musicbrainz_tracks.py
+│   └── enrich_lastfm.py
 ├── sql/
-│   ├── schema/
-│   ├── analytics/
-│   └── archive/
-├── transform/
-├── utils/
-├── testers/
-│
-├── main.py
+│   ├── schema/                  # Database table definitions
+│   ├── analytics/               # Reusable analytical SQL
+│   └── archive/                 # Retired or archived SQL
+├── transform/                   # Warehouse and identity transforms
+├── utils/                        # Supporting utilities and workflows
+├── testers/                     # Testing and investigation scripts
+├── main.py                       # Main ETL orchestrator
 ├── combine_streaming_history.py
 ├── requirements.txt
-├── README.md
-└── documentation/
+└── README.md
 ```
 
-The exact repository contents may evolve, but the project is organized around extraction, loading, transformation, SQL analytics, testing, and exports.
+This is a conceptual guide to the principal modules. Individual scripts and supporting files may evolve as the project develops.
 
 ---
 
-# ETL Pipeline
+## Data Sources
 
-The current pipeline is executed automatically using Windows Task Scheduler.
+### Spotify Extended Streaming History
 
-The recurring pipeline is intentionally focused on maintaining the warehouse and dashboard data. The previous 30-minute Recently Played workflow has been retired from the current design.
+Spotify's historical export is the primary source for personal listening events.
 
-Typical run:
+The export is combined and loaded into:
 
-1. Process available Spotify listening history.
-2. Load or refresh the raw listening-history table.
-3. Build and clean the warehouse DataFrame.
-4. Apply metadata enrichment.
-5. Add data-quality and anomaly flags.
-6. Load `listening_history_warehouse`.
-7. Rebuild SQL analytics.
-8. Export Tableau-ready data.
-9. Record execution results.
+`listening_history_raw`
 
-The warehouse is currently rebuilt during each run. This is a deliberate **Version 1 stability choice**. Incremental warehouse rebuilding is deferred to a future version.
+The raw table preserves the imported playback records so transformation rules can be revised without modifying the original database source.
+
+Historical record counts and coverage dates change when a newer Spotify export is imported. Consult the current database and project journal for the latest validated totals.
+
+### Spotify Web API
+
+The Spotify API supplies metadata and library information used by the pipeline, including track and artist attributes.
+
+The project also maintains canonical Spotify song identities to connect duplicate or alternate Spotify track records where the identity logic supports a match.
+
+### MusicBrainz
+
+MusicBrainz supplies external recording and release metadata.
+
+The track enrichment process uses ISRC lookups, artist credits, title similarity, and duration evidence to evaluate potential recording matches. It records match status and confidence rather than assuming every candidate is correct.
+
+Track enrichment is implemented in:
+
+`load/enrich_musicbrainz_tracks.py`
+
+### Last.fm
+
+Last.fm supplies community music metadata, including track and artist tags, listener and play counts, and available descriptions.
+
+Last.fm's listeners and play counts are community-wide statistics. They are **not** the user's personal Spotify listening totals.
+
+The Last.fm enrichment process is implemented in:
+
+`load/enrich_lastfm.py`
+
+External enrichment results are stored in separate cache tables. Existing Spotify metadata, canonical song identities, and listening history are not directly overwritten by these enrichment scripts.
 
 ---
 
-# Data Sources
+## Database Design
 
-## Spotify Extended Streaming History
+### Raw listening history
 
-The historical Spotify export is the primary source for listening events.
+`listening_history_raw`
 
-The current combined export contains approximately **824,845 raw records**, spanning:
+Stores imported Spotify playback records and serves as the source for warehouse rebuilding.
 
-```text
-2014-07-04 → 2026-08-07
+### Analytical warehouse
+
+`listening_history_warehouse`
+
+The primary analytical table used for listening-history analysis and Tableau reporting.
+
+Its intended grain is one retained listening event per row after the project's transformation and data-quality rules.
+
+### Spotify metadata and identity
+
+The project maintains separate metadata structures for tracks, artists, albums, track-to-artist relationships, and canonical song identities. These support consistent joins and help distinguish Spotify catalog entries from the underlying song or recording.
+
+### External metadata cache
+
+The external enrichment schema includes:
+
+| Table | Purpose |
+|---|---|
+| `musicbrainz_track_metadata` | MusicBrainz recording matches and release dates |
+| `musicbrainz_artist_metadata` | MusicBrainz artist identity metadata |
+| `lastfm_track_metadata` | Last.fm track metadata and community statistics |
+| `lastfm_artist_metadata` | Last.fm artist metadata and community statistics |
+| `external_track_tags` | Source-attributed tags for tracks |
+| `external_artist_tags` | Source-attributed tags for artists |
+| `lastfm_similar_tracks` | Storage for Last.fm similar-track results |
+
+The cache tables track lookup status and timestamps so successful lookups can be reused instead of repeatedly requesting the same metadata.
+
+Database table definitions are maintained under `sql/schema/`.
+
+---
+
+## ETL Pipeline
+
+The main entry point is:
+
+```powershell
+python main.py
 ```
 
-The raw table preserves Spotify's source fields so that transformations can be re-run without modifying the original data.
+The current orchestration runs the following stages:
 
-## Spotify Web API
+1. Check for and load new liked songs.
+2. Rebuild the listening-history warehouse.
+3. Rebuild the permanent song identity map.
+4. Apply canonical Spotify song identities.
+5. Retrieve metadata for missing artists.
+6. Retrieve metadata for tracks.
+7. Run external music metadata enrichment.
+8. Update album artwork.
+9. Rebuild warehouse enrichment.
+10. Rebuild analytics tables.
+11. Export Tableau datasets.
+12. Record execution results in the ETL log.
 
-The API is used primarily for metadata and library enrichment.
+The Recently Played stage remains present in the code but is currently disabled in the main orchestration.
 
-The project no longer depends on the Recently Played endpoint as a required recurring source for the dashboard warehouse.
+### External enrichment orchestration
+
+The external enrichment stage invokes the standalone enrichment scripts for:
+
+- MusicBrainz track metadata
+- Last.fm track metadata
+- Last.fm artist metadata
+
+The scripts manage their own API requests, rate limiting, lookup queues, and cache writes.
+
+The enrichment process is designed to work through eligible records while reusing cached successful lookups. The initial historical backfill may take considerably longer than later runs that have only a small number of new records.
+
+External enrichment warnings are intended to remain distinguishable from failures in the core ETL workflow.
+
+### Warehouse strategy
+
+The warehouse is rebuilt during the normal ETL process rather than incrementally updated one event at a time.
+
+This approach keeps transformation behavior reproducible and straightforward to inspect. Incremental processing and performance optimization remain potential future improvements.
 
 ---
 
-# Data Quality
+## Data Quality and Transformation
 
-The transformation layer applies several cleaning rules before loading the warehouse.
+The transformation layer handles source inconsistencies before data reaches downstream analytics.
 
-### Exact duplicate removal
+### Duplicate handling
 
-Rows identical across the relevant raw Spotify playback fields are removed.
+The project distinguishes exact duplicate records from records that share a timestamp and track identity. Where the configured rules identify duplicate representations of a playback event, the retained record is selected using the project's playback-duration logic.
 
-### Duplicate-play removal
+### Impossible playback
 
-Multiple records sharing the same timestamp and Spotify track are treated as duplicate representations of one playback event. The record with the greatest `ms_played` is retained.
+Playback events that violate the project's overlap rules can be excluded during transformation.
 
-### Impossible-play removal
+### Anomaly flags
 
-Playback events that overlap an earlier valid playback of the same track beyond the configured tolerance are removed.
+Suspicious repeating playback patterns can be flagged instead of silently deleting all questionable historical evidence.
 
-### Anomaly flagging
-
-Suspicious repeating playback patterns are flagged rather than silently deleted.
-
-Current anomaly fields include:
+The warehouse includes fields such as:
 
 - `is_anomaly`
 - `anomaly_type`
 
-This allows Tableau to exclude or analyze questionable records without destroying the underlying historical evidence.
+These allow downstream analytics to filter suspicious records where appropriate.
 
-### Offline playback correction
+### Offline playback timestamps
 
-Spotify's `offline_timestamp` is used when an offline playback has a valid timestamp.
+When a valid offline playback timestamp is available, the transformation can use it to derive the canonical playback time rather than relying solely on the source synchronization timestamp.
 
-The export contains both Unix-second and Unix-millisecond timestamp values, so the transformation determines the appropriate unit from the timestamp magnitude before deriving `played_at` and its date/time dimensions.
+Timestamp-unit handling is necessary because exported offline timestamp values may use different Unix timestamp scales.
+
+### Canonical song identity
+
+Spotify can contain multiple catalog entries for the same underlying song. The project uses identity mapping to support consistent analysis across these entries without assuming that every alternate version is interchangeable.
 
 ---
 
-# Warehouse
+## Analytics and Tableau
 
-The primary analytical table is:
+The SQL analytics layer provides reusable calculations for downstream reporting.
 
-```text
-listening_history_warehouse
+The configured Tableau export list is maintained in:
+
+`config/pipeline.py`
+
+Current configured exports include:
+
+- `listening_history_warehouse`
+- `artist_summary`
+- `liked_songs`
+- `album_listening_sequences`
+
+The export module writes the configured datasets for use in Tableau Public.
+
+The dashboard is designed around Spotify-inspired styling, listening-history exploration, artist and track analysis, and library insights. Dashboard pages and their implementation status are maintained separately from the ETL documentation.
+
+---
+
+## Setup
+
+These instructions assume a local Windows development environment with Python and MySQL installed.
+
+### 1. Clone the repository
+
+```powershell
+git clone https://github.com/gabbycoleman96-byte/spotify-listening-analytics.git
+cd spotify-listening-analytics
 ```
 
-Its grain is:
+### 2. Create and activate a virtual environment
 
-> One row = one listening event retained after transformation.
-
-The warehouse contains playback timestamps, calendar dimensions, track/artist/album information, Spotify identifiers, listening behavior, metadata, navigation/session fields, and data-quality flags.
-
-The raw source table is:
-
-```text
-listening_history_raw
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 ```
 
-The raw table is never modified by warehouse cleaning.
+### 3. Install dependencies
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+### 4. Configure environment variables
+
+Create a local `.env` file using the variable names expected by the database connection and Spotify API configuration.
+
+The project uses environment variables for database credentials and API configuration. Last.fm enrichment additionally requires:
+
+```text
+LASTFM_API_KEY=your_lastfm_api_key
+```
+
+Keep real credentials in the local `.env` file. Do not commit secrets to GitHub or paste them into public issues.
+
+Check the repository's database and API configuration modules for the complete set of required environment variable names.
+
+### 5. Prepare the database
+
+Create the `spotify_analysis` database and apply the required schema scripts under `sql/schema/` in the appropriate dependency order.
+
+The external metadata tables must exist before the MusicBrainz and Last.fm enrichment scripts can write results to them.
+
+Do not recreate or truncate existing tables as a routine setup step on a database containing data you want to preserve.
+
+### 6. Prepare source data
+
+Place the required Spotify Extended Streaming History export files in the configured local source directory. Follow the export update instructions in:
+
+`utils/new_spotify_export/spotify_export_update_instructions.md`
+
+Use the documented backup and import process when replacing an existing historical export.
+
+### 7. Run the pipeline
+
+```powershell
+python main.py
+```
+
+The first full run may take significantly longer than later runs because it may need to load historical data, build metadata, and perform external enrichment.
 
 ---
 
-# Tableau Public Dashboard
+## Running External Enrichment Separately
 
-The dashboard is designed with Spotify-inspired visual styling and is the primary presentation layer.
+The enrichment modules can also be run independently for testing, backfills, and troubleshooting.
 
-Current dashboard areas include:
+### MusicBrainz tracks
 
-- Home
-- Artists / Headliners
-- Tracks & Albums
-- Discovery
-- Library Cleanup
-- Mobile / Now Playing
+Process a small batch:
 
-The dashboard includes KPI cards, historical listening trends, artist and track analysis, daily/hourly listening patterns, "On This Day" analysis, and persistent Now Playing-style elements.
+```powershell
+python -m load.enrich_musicbrainz_tracks --limit 10
+```
 
-The dashboard is the current project priority.
+Process all eligible tracks:
 
----
+```powershell
+python -m load.enrich_musicbrainz_tracks --all
+```
 
-# Technology Stack
+### Last.fm tracks
 
-### Languages
+```powershell
+python -m load.enrich_lastfm --entity tracks --limit 10
+```
 
-- Python
-- SQL
+Process all eligible tracks:
 
-### Database
+```powershell
+python -m load.enrich_lastfm --entity tracks --all
+```
 
-- MySQL 8
+### Last.fm artists
 
-### Python Libraries
+```powershell
+python -m load.enrich_lastfm --entity artists --limit 10
+```
 
-- pandas
-- SQLAlchemy
-- requests
-- python-dotenv
-- tqdm
+Process all eligible artists:
 
-### Visualization
+```powershell
+python -m load.enrich_lastfm --entity artists --all
+```
 
-- Tableau Public
+Start with a small batch when validating a new setup. Large backfills can take hours because the scripts deliberately limit request frequency.
 
-### Automation
-
-- Windows Task Scheduler
-
----
-
-# Future Work
-
-Future engineering work is intentionally deferred.
-
-Potential Version 2 improvements include:
-
-- Incremental warehouse loading
-- More sophisticated album/track identity handling
-- Expanded metadata enrichment
-- More advanced anomaly detection
-- Improved pipeline performance
-- Additional external music data sources
-- Automated playlist generation
-- Direct Spotify playlist creation
-
-These are ideas for later. They are **not current blockers** for Dashboard Version 1.0.0.
+Avoid running a standalone backfill concurrently with the same enrichment stage in `main.py`, since both processes could attempt to handle the same pending records.
 
 ---
 
-# Documentation
+## Automation and Logging
 
-The project documentation is maintained alongside the codebase:
+The pipeline is designed to run locally and can be scheduled with Windows Task Scheduler.
 
-- `README.md` – Project overview and current state
-- `architechture.md` – System architecture and data flow
-- `CHANGELOG.md` – Major changes and milestones
-- `data_dictionary.md` – Database and warehouse reference
-- `design_decisions.md` – Architectural and technical reasoning
-- `project_journal.md` – Development history and lessons learned
-- `roadmap.md` – Current priorities and deferred work
+The ETL logger records high-level execution information, including start and end times, runtime, status, liked-song counts, recent-track counts when that stage is used, and error details.
+
+The external enrichment stage can report warnings separately from core pipeline exceptions. Individual lookup statuses are also stored in the enrichment cache tables.
+
+A scheduled run should be monitored when introducing schema changes, updating credentials, replacing source exports, or making significant ETL changes.
 
 ---
 
-# Author
+## Project Documentation
 
-**Gabby Coleman**
+The `docs/` directory contains the supporting documentation:
 
-Career Coach transitioning into Data Analytics and Data Engineering.
+| Document | Purpose |
+|---|---|
+| `docs/architecture.md` | System components, data flow, and ETL stages |
+| `docs/data_dictionary.md` | Database tables, grains, and important fields |
+| `docs/design_decisions.md` | Rationale behind key technical choices |
+| `docs/CHANGELOG.md` | Significant changes and milestones |
+| `docs/project_journal.md` | Development history and lessons learned |
+| `docs/roadmap.md` | Current priorities and future plans |
+
+The source code and database schema are the authoritative references for implementation details. Documentation should distinguish implemented behavior from planned features and historical checkpoints.
 
 ---
 
-# License
+## Future Directions
 
-This project is provided for educational and portfolio purposes.
+Potential future improvements include:
+
+- Incremental warehouse processing and performance optimization
+- More complete track, album, and artist identity resolution
+- Additional data-quality validation
+- More advanced listening-session and discovery analytics
+- Using external tags and release metadata for music exploration
+- Generating decade-based and mood-based playlists
+- Evaluating existing playlists against metadata-derived themes
+- Optional automated playlist creation through Spotify
+
+These are future directions, not claims that every feature is currently implemented.
+
+---
+
+## Project Goals
+
+This project is both a personal music analytics tool and a practical data engineering portfolio project.
+
+It demonstrates work with:
+
+- ETL pipeline design and orchestration
+- API integration and rate-limited data collection
+- Relational database design
+- Data cleaning and validation
+- Entity resolution and canonical identities
+- Metadata caching and enrichment
+- SQL analytics
+- Data visualization and dashboard design
+- Workflow automation
+- Technical documentation and version control
+
+---
+
+## Author
+
+Gabby Coleman
+
+A personal data engineering and music analytics project.
+
