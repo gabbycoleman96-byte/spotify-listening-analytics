@@ -93,6 +93,7 @@ class StageResult:
     inserted: int = 0
     rows_loaded: int = 0
     runtime: float = 0.0
+    error_message: str | None = None
 
 
 def format_runtime(seconds):
@@ -124,7 +125,13 @@ def print_performance_summary(stage_results, total_runtime):
 
     print("-" * 60)
     print(f"{'Total Runtime':<40}{format_runtime(total_runtime)}")
-    print("\nPipeline completed successfully!")
+    if any(
+        result.error_message
+        for _, result in stage_results
+    ):
+        print("\nPipeline completed with warnings.")
+    else:
+        print("\nPipeline completed successfully!")
 
 
 def run_liked_songs_stage():
@@ -478,7 +485,16 @@ def run_external_music_enrichment_stage():
     stage_runtime = perf_counter() - stage_start
     print_stage_complete(stage_name, stage_runtime)
 
-    return StageResult(runtime=stage_runtime)
+    failure_message = (
+        "External enrichment failures: " + ", ".join(failures)
+        if failures
+        else None
+    )
+
+    return StageResult(
+        runtime=stage_runtime,
+        error_message=failure_message,
+    )
     
     
 def run_album_art_stage():
@@ -579,6 +595,11 @@ def main():
         artist_metadata_result = run_artist_metadata_stage()
         track_metadata_result = run_track_metadata_stage()
         external_music_result = run_external_music_enrichment_stage()
+
+        if external_music_result.error_message:
+            status = "Warning"
+            error_message = external_music_result.error_message
+
         album_art_result = run_album_art_stage()
         warehouse_enrichment_result = run_warehouse_enrichment_stage()
         analytics_result = run_analytics_stage()
