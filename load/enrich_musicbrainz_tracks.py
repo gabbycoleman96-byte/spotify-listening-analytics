@@ -330,11 +330,13 @@ def choose_recording(
 # Database Queries
 # ============================================================
 
-def get_pending_tracks(limit):
-    """Find ISRC-bearing tracks without a completed lookup."""
 
+def get_pending_tracks(limit=None):
+    """Find tracks that need a MusicBrainz lookup."""
 
-    query = text("""
+    limit_clause = "LIMIT :row_limit" if limit is not None else ""
+
+    query = text(f"""
         SELECT
             tm.spotify_id,
             tm.track_name,
@@ -362,15 +364,13 @@ def get_pending_tracks(limit):
                 OR mb.lookup_status IN ('pending', 'error')
             )
         ORDER BY tm.spotify_id
-        LIMIT :row_limit
+        {limit_clause}
     """)
 
+    params = {"row_limit": limit} if limit is not None else {}
 
     with engine.connect() as connection:
-        result = connection.execute(
-            query,
-            {"row_limit": limit},
-        )
+        result = connection.execute(query, params)
 
         return [
             dict(row)
@@ -690,25 +690,38 @@ def main():
         description="Enrich Spotify tracks using MusicBrainz ISRCs."
     )
 
-    parser.add_argument(
+    group = parser.add_mutually_exclusive_group()
+
+    group.add_argument(
         "--limit",
         type=int,
-        default=25,
-        help="Maximum tracks to process in this run (default: 25).",
+        default=None,
+        help="Maximum tracks to process (default: 25).",
+    )
+
+    group.add_argument(
+        "--all",
+        action="store_true",
+        help="Process all eligible tracks without a batch limit.",
     )
 
     args = parser.parse_args()
 
-    if args.limit < 1:
+    if args.limit is not None and args.limit < 1:
         parser.error("--limit must be at least 1.")
 
-    tracks = get_pending_tracks(args.limit)
+    limit = None if args.all else (
+        args.limit if args.limit is not None else 25
+    )
+
+    tracks = get_pending_tracks(limit)
 
     print(f"Tracks queued: {len(tracks):,}")
 
     if not tracks:
         print("No pending ISRC lookups found.")
         return
+
 
     client = MusicBrainzClient()
 
@@ -721,7 +734,18 @@ def main():
 
     for index, track in enumerate(tracks, start=1):
         spotify_id = track["spotify_id"]
-        isrc = str(track["isrc"]).strip().upper()
+        isrc = re.sub(
+            r"[^A-Z0-9]",
+            "",
+            str(track["isrc"]).strip().upper(),
+        )
+
+        if len(isrc) != 12:
+            print(
+                f"    Invalid ISRC format after normalization: "
+                f"{track['isrc']}"
+            )
+            continue
 
         print(
             f"[{index}/{len(tracks)}] "
